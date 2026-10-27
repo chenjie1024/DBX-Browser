@@ -50,9 +50,9 @@ Release 发布后，`.github/workflows/plugin-release.yml` 会调用
 
 Fork `t8y2/dbx-store`，向 `main` 提一个 PR，包含两个文件：
 
-- `publishers/chen3.json` —— 只在首次上架时需要，字段恰好是 `id` / `name` / `status`：
+- `publishers/xingxi.json` —— 只在首次上架时需要，字段恰好是 `id` / `name` / `status`：
   ```json
-  { "id": "chen3", "name": "chen3", "status": "active" }
+  { "id": "xingxi", "name": "xingxi", "status": "active" }
   ```
 - `candidates/com.dbx.webview.json` —— 候选元数据（本仓库 `store/candidates/com.dbx.webview.json` 是现成模板）。
 
@@ -103,6 +103,6 @@ curl -sSL https://github.com/chenjie1024/DBX-Browser/releases/download/v0.7.6/re
 |---|---|
 | 商店元数据（自动同步读） | `.dbx-store.json` |
 | 候选元数据模板 | `store/candidates/com.dbx.webview.json` |
-| 发布者记录模板 | `store/publishers/chen3.json` |
+| 发布者记录模板 | `store/publishers/xingxi.json` |
 | 自动同步登记条目 | `store/plugin-source-entry.json` |
 | 发布工作流 | `.github/workflows/plugin-release.yml` |

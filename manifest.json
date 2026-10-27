@@ -4,7 +4,7 @@
   "id": "com.dbx.webview",
   "name": "Browser",
   "version": "0.7.6",
-  "publisher": "chen3",
+  "publisher": "xingxi",
   "description": "在 DBX 内打开任意网站：抓取正文、按站点规则重排；小红书等前端渲染站点可直接在插件内实时浏览、登录和评论。",
   "icon": "assets/plugin.svg",
   "source": "https://github.com/chenjie1024/DBX-Browser",

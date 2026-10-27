@@ -1,37 +1,29 @@
-﻿{
-    "schemaVersion":  1,
-    "id":  "com.dbx.webview",
-    "publisher":  "chen3",
-    "version":  "0.7.6",
-    "name":  "Browser",
-    "description":  "在 DBX 内打开任意网站：抓取正文并按站点规则重排；小红书、抖音等前端渲染站点可直接在插件内实时浏览、登录、评论。",
-    "icon":  "https://raw.githubusercontent.com/chenjie1024/DBX-Browser/v0.7.6/assets/plugin.svg",
-    "tags":  [
-                 "web",
-                 "reader",
-                 "browser",
-                 "novel"
-             ],
-    "permissions":  [
-                        "host.storage",
-                        "host.events"
-                    ],
-    "source":  "https://github.com/chenjie1024/DBX-Browser/tree/v0.7.6",
-    "homepage":  "https://github.com/chenjie1024/DBX-Browser",
-    "license":  "MIT",
-    "releaseNotes":  "首个公开版本：网页正文抽取、站点预设（可自定义增删）、实时页面渲染与鼠标键盘转发、本地 txt 小说阅读。",
-    "localizations":  {
-                          "zh-CN":  {
-                                        "name":  "Browser",
-                                        "description":  "在 DBX 内打开任意网站：抓取正文并按站点规则重排；小红书、抖音等前端渲染站点可直接在插件内实时浏览、登录、评论。"
-                                    }
-                      },
-    "targets":  [
-                    {
-                        "target":  "windows-x64",
-                        "url":  "https://github.com/chenjie1024/DBX-Browser/releases/download/v0.7.6/com.dbx.webview-0.7.6-windows-x64.dbxp",
-                        "sha256":  "c06281eb083336ef4c3b49e31e7632bc0feeab564f881954814f94b130eb7368",
-                        "size":  2776576
-                    }
-                ]
+{
+  "schemaVersion": 1,
+  "id": "com.dbx.webview",
+  "publisher": "xingxi",
+  "version": "0.7.6",
+  "name": "Browser",
+  "description": "在 DBX 内打开任意网站：抓取正文并按站点规则重排；小红书、抖音等前端渲染站点可直接在插件内实时浏览、登录、评论。",
+  "icon": "https://raw.githubusercontent.com/chenjie1024/DBX-Browser/v0.7.6/assets/plugin.svg",
+  "tags": ["web", "reader", "browser", "novel"],
+  "permissions": ["host.storage", "host.events"],
+  "source": "https://github.com/chenjie1024/DBX-Browser/tree/v0.7.6",
+  "homepage": "https://github.com/chenjie1024/DBX-Browser",
+  "license": "MIT",
+  "releaseNotes": "首个公开版本：网页正文抽取、站点预设（可自定义增删）、实时页面渲染与鼠标键盘转发、本地 txt 小说阅读。",
+  "localizations": {
+    "zh-CN": {
+      "name": "Browser",
+      "description": "在 DBX 内打开任意网站：抓取正文并按站点规则重排；小红书、抖音等前端渲染站点可直接在插件内实时浏览、登录、评论。"
+    }
+  },
+  "targets": [
+    {
+      "target": "windows-x64",
+      "url": "https://github.com/chenjie1024/DBX-Browser/releases/download/v0.7.6/com.dbx.webview-0.7.6-windows-x64.dbxp",
+      "sha256": "e5097f3e510f83c2b7f18fbbff89e682bdfcdc9ccf952e2c73178a4c9902f127",
+      "size": 2776487
+    }
+  ]
 }
