@@ -30,8 +30,8 @@
                     {
                         "target":  "windows-x64",
                         "url":  "https://github.com/chenjie1024/DBX-Browser/releases/download/v0.7.7/com.dbx.webview-0.7.7-windows-x64.dbxp",
-                        "sha256":  "fcd9b4896cd9f31e30bb5aa2dd109273c4fdd6f1a288f17a7eafa91e15eb158d",
-                        "size":  2776800
+                        "sha256":  "0fc6c15ff247cdd12bb8d099073aace73faffb5118ff57074a672caec1ae9e6e",
+                        "size":  2783402
                     }
                 ]
 }
