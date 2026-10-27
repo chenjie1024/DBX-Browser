@@ -9,10 +9,15 @@ permissions:
 
 jobs:
   release:
-    uses: t8y2/dbx/.github/workflows/plugin-release-reusable.yml@plugin-sdk-v1
+    # 可复用工作流必须指向真实存在的 ref。
+    # 脚手架生成的 @plugin-sdk-v1 在 t8y2/dbx 里并不存在，会导致
+    # "0 个 job、直接 failure"（实测踩过），所以这里钉到已发布的 tag。
+    uses: t8y2/dbx/.github/workflows/plugin-release-reusable.yml@v0.6.58
     with:
       release-tag: ${{ github.event.release.tag_name }}
       package-command: dbx-plugin package .
       package-path: dist/*.dbxp
       metadata-path: dist/*.artifact.json
       plugin-cli-version: 0.1.9
+      # 本项目是 Rust sidecar：不装工具链会直接在 package 步骤失败。
+      rust-toolchain: stable
