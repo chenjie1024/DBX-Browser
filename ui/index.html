@@ -1,0 +1,592 @@
+<!doctype html>
+<html lang="zh-CN" data-dbx-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Browser</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="wb-root" id="wbRoot">
+      <!-- ── banner: fatal bootstrap problem (host bridge unreachable) ───────── -->
+      <div class="wb-banner" id="bootBanner" role="alert" hidden>
+        <span class="wb-banner__dot" aria-hidden="true"></span>
+        <span class="wb-banner__text" id="bootBannerText"></span>
+      </div>
+
+      <!-- ── top toolbar ────────────────────────────────────────────────────── -->
+      <header class="tb" id="toolbar">
+        <div class="tb__row">
+          <div class="tb__group tb__group--start">
+            <button class="tb__icon" id="btnSidebarToggle" type="button" title="侧栏" aria-label="侧栏" aria-pressed="true">
+              <span class="ico" aria-hidden="true">☰</span>
+            </button>
+            <button class="tb__icon" id="btnBack" type="button" title="后退" aria-label="后退" disabled>
+              <span class="ico" aria-hidden="true">←</span>
+            </button>
+            <button class="tb__icon" id="btnForward" type="button" title="前进" aria-label="前进" disabled>
+              <span class="ico" aria-hidden="true">→</span>
+            </button>
+            <button class="tb__icon" id="btnReload" type="button" title="刷新" aria-label="刷新">
+              <span class="ico" aria-hidden="true">⟳</span>
+            </button>
+          </div>
+
+          <!-- 注意：沙箱 iframe 没有 allow-forms，真实提交会被浏览器拦掉，
+               所以这里用 div 而不是 form，回车/点击都由脚本处理。 -->
+          <div class="tb__omni" id="addressForm">
+            <span class="tb__scheme" id="addressScheme" aria-hidden="true">◎</span>
+            <input
+              class="tb__input"
+              id="addressInput"
+              type="text"
+              inputmode="url"
+              spellcheck="false"
+              autocomplete="off"
+              autocapitalize="off"
+              placeholder="输入网址或搜索关键词"
+              aria-label="地址"
+            />
+            <button class="tb__go" id="btnGo" type="button">打开</button>
+            <!-- 一键把当前网址放回地址栏（并选中），方便复制或改一段再打开 -->
+            <button
+              class="tb__icon-btn"
+              id="btnCopyUrl"
+              type="button"
+              title="把当前网址放到地址栏"
+              aria-label="把当前网址放到地址栏"
+            >
+              <span aria-hidden="true">⧉</span>
+            </button>
+          </div>
+
+          <div class="tb__group tb__group--end">
+            <label class="tb__mode" title="渲染模式">
+              <span class="tb__mode-label" id="modeLabel">模式</span>
+              <select class="tb__select" id="modeSelect" aria-label="渲染模式">
+                <option value="reader">阅读模式</option>
+                <option value="full">整页模式</option>
+                <option value="source">源码</option>
+              </select>
+              <span class="tb__hint" id="modeHint">阅读模式适合文章/小说章节，整页模式保留原站排版</span>
+            </label>
+            <button class="tb__chip" id="btnCatalog" type="button" title="回到这本书的目录" hidden>
+              <span class="ico" aria-hidden="true">☰</span>
+              <span class="tb__chip-text" id="catalogText">目录</span>
+            </button>
+            <button class="tb__chip" id="btnOpenBrowser" type="button" title="在浏览器窗口中打开（真实渲染，支持视频与登录）">
+              <span class="ico" aria-hidden="true">◎</span>
+              <span class="tb__chip-text" id="openBrowserText">浏览器打开</span>
+            </button>
+            <button class="tb__chip" id="btnLive" type="button" title="在插件内用真实浏览器渲染当前页面（支持登录、评论）" aria-pressed="false">
+              <span class="ico" aria-hidden="true">◉</span>
+              <span class="tb__chip-text" id="liveText">实时页面</span>
+            </button>
+            <button class="tb__chip" id="btnBookmark" type="button" title="收藏此页" aria-label="收藏此页" aria-pressed="false">
+              <span class="ico" id="bookmarkIcon" aria-hidden="true">⭐</span>
+              <span class="tb__chip-text" id="bookmarkText">收藏</span>
+            </button>
+            <button class="tb__chip" id="btnStyle" type="button" title="设置" aria-label="设置" aria-expanded="false" aria-controls="stylePanel">
+              <span class="ico" aria-hidden="true">⚙️</span>
+              <span class="tb__chip-text" id="styleText">设置</span>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <!-- ── body: sidebar + content ────────────────────────────────────────── -->
+      <div class="wb-body">
+        <aside class="sb" id="sidebar" aria-label="侧栏">
+          <div class="sb__tabs" id="sideTabs" role="tablist">
+            <button class="sb__tab" type="button" data-panel="tabs" role="tab" aria-selected="true">标签页</button>
+            <button class="sb__tab" type="button" data-panel="presets" role="tab" aria-selected="false">站点预设</button>
+            <button class="sb__tab" type="button" data-panel="bookmarks" role="tab" aria-selected="false">书签</button>
+            <button class="sb__tab" type="button" data-panel="history" role="tab" aria-selected="false">历史</button>
+            <button class="sb__tab" type="button" data-panel="local" role="tab" aria-selected="false" id="tabLocalBook">本地小说</button>
+          </div>
+          <div class="sb__body">
+            <section class="sb__panel" data-panel-view="tabs">
+              <ul class="tablist" id="tabList"></ul>
+              <button class="sb__ghost" id="btnNewTab" type="button">
+                <span class="ico" aria-hidden="true">＋</span><span id="newTabText">新建标签页</span>
+              </button>
+            </section>
+
+            <section class="sb__panel" data-panel-view="presets" hidden>
+              <div class="sb__head">
+                <span class="sb__title" id="presetHead">站点预设</span>
+                <button class="sb__action" id="btnPresetNew" type="button">＋ 新建</button>
+                <button class="sb__action" id="btnPresetClear" type="button">自动</button>
+              </div>
+
+              <!-- 自定义预设表单：默认收起。内置预设只读，只有自己建的能改/删。 -->
+              <form class="pf" id="presetForm" hidden>
+                <div class="pf__title" id="presetFormTitle">新建站点预设</div>
+                <label class="pf__field">
+                  <span class="pf__label" id="pfNameLabel">名称</span>
+                  <input class="pf__input" id="pfName" type="text" maxlength="40" placeholder="例如：某小说站" />
+                </label>
+                <label class="pf__field">
+                  <span class="pf__label" id="pfCategoryLabel">分类</span>
+                  <input class="pf__input" id="pfCategory" type="text" maxlength="20" placeholder="例如：小说" />
+                </label>
+                <label class="pf__field">
+                  <span class="pf__label" id="pfHostsLabel">域名（逗号分隔）</span>
+                  <input class="pf__input" id="pfHosts" type="text" placeholder="example.com, *.example.com" />
+                </label>
+                <label class="pf__field">
+                  <span class="pf__label" id="pfContentLabel">正文选择器（逗号分隔，可留空）</span>
+                  <input class="pf__input" id="pfContent" type="text" placeholder="#content, article" />
+                </label>
+                <label class="pf__field">
+                  <span class="pf__label" id="pfRemoveLabel">要删除的选择器（可留空）</span>
+                  <input class="pf__input" id="pfRemove" type="text" placeholder=".comment, nav, footer" />
+                </label>
+                <label class="pf__field">
+                  <span class="pf__label" id="pfSearchLabel">搜索地址模板（可留空）</span>
+                  <input class="pf__input" id="pfSearch" type="text" placeholder="https://example.com/search?q={q}" />
+                </label>
+                <label class="pf__field">
+                  <span class="pf__label" id="pfModeLabel">渲染模式</span>
+                  <select class="pf__input" id="pfMode">
+                    <option value="reader">阅读模式</option>
+                    <option value="full">整页模式</option>
+                  </select>
+                </label>
+                <p class="pf__hint" id="pfHint"></p>
+                <div class="pf__actions">
+                  <button class="dr__btn" id="pfSave" type="button">保存</button>
+                  <button class="dr__btn" id="pfCancel" type="button">取消</button>
+                </div>
+              </form>
+
+              <ul class="plist" id="presetList"></ul>
+            </section>
+
+            <!-- 地址标签的右键菜单：修改 / 删除（删除需二次确认） -->
+            <div class="hmenu" id="hostMenu" hidden>
+              <div class="hmenu__label" id="hostMenuLabel"></div>
+              <div class="hmenu__actions" id="hostMenuActions">
+                <button class="hmenu__item" id="hostMenuEdit" type="button">
+                  <span id="hostMenuEditLabel">修改</span>
+                </button>
+                <button class="hmenu__item hmenu__item--danger" id="hostMenuDelete" type="button">
+                  <span id="hostMenuDeleteLabel">删除</span>
+                </button>
+              </div>
+              <div class="hmenu__confirm" id="hostMenuConfirm" hidden>
+                <p class="hmenu__confirm-text" id="hostMenuConfirmText"></p>
+                <div class="hmenu__confirm-actions">
+                  <button class="hmenu__item hmenu__item--danger" id="hostMenuConfirmYes" type="button">确认删除</button>
+                  <button class="hmenu__item" id="hostMenuConfirmNo" type="button">取消</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 修改域名的小弹窗（sandbox 里没有 prompt，只能自己画） -->
+            <div class="hdialog" id="hostDialog" hidden>
+              <div class="hdialog__box">
+                <div class="hdialog__title" id="hostDialogTitle">修改域名</div>
+                <input class="pf__input" id="hostDialogInput" type="text" maxlength="120" spellcheck="false" />
+                <div class="hdialog__actions">
+                  <button class="dr__btn" id="hostDialogSave" type="button">保存</button>
+                  <button class="dr__btn" id="hostDialogCancel" type="button">取消</button>
+                </div>
+              </div>
+            </div>
+
+            <section class="sb__panel" data-panel-view="bookmarks" hidden>
+              <div class="sb__head">
+                <span class="sb__title" id="bookmarkHead">书签</span>
+              </div>
+              <ul class="plist" id="bookmarkList"></ul>
+            </section>
+
+            <section class="sb__panel" data-panel-view="history" hidden>
+              <div class="sb__head">
+                <span class="sb__title" id="historyHead">历史</span>
+                <button class="sb__action" id="btnHistoryClear" type="button">清空</button>
+              </div>
+              <ul class="plist" id="historyList"></ul>
+            </section>
+
+            <section class="sb__panel" data-panel-view="local" hidden>
+              <div class="sb__head">
+                <span class="sb__title" id="localHead">本地小说</span>
+                <button class="sb__action" id="btnLocalImport" type="button"><span id="localImportText">导入 txt</span></button>
+              </div>
+              <!-- 书名 + 编码 + 字数，然后是章节目录（可点） -->
+              <div class="lb" id="localBookInfo"></div>
+              <ul class="lb__list" id="localChapterList"></ul>
+            </section>
+          </div>
+          <div class="sb__foot" id="sidebarFoot">
+            <button class="sb__icon" id="btnSidebarHide" type="button" title="收起侧栏" aria-label="收起侧栏">⟨</button>
+          </div>
+        </aside>
+
+        <div class="scrim" id="scrim" hidden></div>
+
+        <main class="ct" id="content">
+          <div class="ct__view" id="contentView">
+            <!-- payload.warnings from the sidecar — dismissible, first child of the view -->
+            <div class="notice-bar" id="noticeBar" hidden></div>
+            <!-- empty / loading / error / page are rendered into #pageHost -->
+            <div class="ct__host" id="pageHost"></div>
+          </div>
+
+          <!-- 插件内实时页面：sidecar 的离屏 WebView2 把真实渲染帧送到这里。
+               沙箱 iframe 嵌不了外部站点，所以这是一张"活的画面"而不是 iframe。 -->
+          <div class="live" id="liveHost" hidden>
+            <img class="live__frame" id="liveFrame" alt="实时页面" draggable="false" />
+            <!-- 首选的绘制面：用 createImageBitmap 在**工作线程**解码，
+                 再在 rAF 里 drawImage。直接用 <img src=data:> 每帧重设会让
+                 解码压在主线程上，滚动时明显掉帧；<img> 保留作降级路径。 -->
+            <canvas class="live__frame" id="liveCanvas" width="1280" height="900" hidden></canvas>
+            <div class="live__overlay" id="liveOverlay">
+              <span class="live__spinner" id="liveSpinner" aria-hidden="true"></span>
+              <div class="live__title" id="liveTitle">正在打开真实页面…</div>
+              <div class="live__hint" id="liveHint">首次打开需要几秒；登录一次后会记住</div>
+            </div>
+            <div class="live__hud" id="liveHud">
+              <span class="live__badge" id="liveBadge">实时渲染</span>
+              <button class="live__btn" id="btnLiveExit" type="button">退出实时</button>
+            </div>
+            <div class="live__tips" id="liveTips">点击页面即可操作 · 中文输入法直接输入 · 滚轮翻页</div>
+            <!-- 隐藏的可编辑区：承接键盘与中文输入法，再把文字通过 CDP 送进页面。 -->
+            <textarea class="live__ime" id="liveIme" aria-hidden="true" tabindex="-1" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
+          </div>
+        </main>
+
+        <!-- ── settings drawer: 样式 / 浏览器窗口 / 设置 ─────────────────────── -->
+        <aside class="dr" id="stylePanel" aria-label="设置" hidden>
+          <div class="dr__head">
+            <span class="dr__title" id="styleTitle">设置</span>
+            <button class="dr__close" id="btnStyleClose" type="button" title="关闭" aria-label="关闭">✕</button>
+          </div>
+
+          <div class="dr__tabs" id="drawerTabs" role="tablist">
+            <button class="dr__tab dr__tab--active" id="tabStyle" type="button" role="tab" data-drawer-tab="style" aria-selected="true">
+              <span aria-hidden="true">Aa</span><span id="tabStyleText">样式</span>
+            </button>
+            <button class="dr__tab" id="tabBrowser" type="button" role="tab" data-drawer-tab="browser" aria-selected="false">
+              <span aria-hidden="true">◎</span><span id="tabBrowserText">浏览器窗口</span>
+            </button>
+            <button class="dr__tab" id="tabGeneral" type="button" role="tab" data-drawer-tab="general" aria-selected="false">
+              <span aria-hidden="true">⚙</span><span id="tabGeneralText">设置</span>
+            </button>
+          </div>
+
+          <div class="dr__body">
+            <!-- ── 页签 1：阅读样式 ─────────────────────────────────────────── -->
+            <div class="dr__pane" id="paneStyle" data-drawer-pane="style">
+            <label class="dr__check">
+              <input type="checkbox" id="stylePerSite" />
+              <span id="perSiteText">仅当前站点</span>
+            </label>
+
+            <div class="dr__field">
+              <label class="dr__label" for="styleFontFamily" id="fontFamilyLabel">字体</label>
+              <select class="dr__select" id="styleFontFamily">
+                <option value="system">系统默认</option>
+                <option value="serif">宋体 / Serif</option>
+                <option value="sans">黑体 / Sans</option>
+                <option value="kai">楷体 / Kai</option>
+              </select>
+            </div>
+
+            <div class="dr__field">
+              <div class="dr__row">
+                <label class="dr__label" for="styleFontSize" id="fontSizeLabel">字号</label>
+                <output class="dr__value" id="styleFontSizeValue">17px</output>
+              </div>
+              <input class="dr__range" type="range" id="styleFontSize" min="12" max="28" step="1" value="17" />
+            </div>
+
+            <div class="dr__field">
+              <div class="dr__row">
+                <label class="dr__label" for="styleLineHeight" id="lineHeightLabel">行高</label>
+                <output class="dr__value" id="styleLineHeightValue">1.75</output>
+              </div>
+              <input class="dr__range" type="range" id="styleLineHeight" min="1.2" max="2.6" step="0.05" value="1.75" />
+            </div>
+
+            <div class="dr__field">
+              <div class="dr__row">
+                <label class="dr__label" for="stylePageWidth" id="pageWidthLabel">页面宽度</label>
+                <output class="dr__value" id="stylePageWidthValue">860px</output>
+              </div>
+              <input class="dr__range" type="range" id="stylePageWidth" min="480" max="1200" step="10" value="860" />
+            </div>
+
+            <div class="dr__field">
+              <div class="dr__row">
+                <label class="dr__label" for="styleContentWidth" id="contentWidthLabel">正文宽度</label>
+                <output class="dr__value" id="styleContentWidthValue">72ch</output>
+              </div>
+              <input class="dr__range" type="range" id="styleContentWidth" min="30" max="110" step="1" value="72" />
+            </div>
+
+            <div class="dr__grid">
+              <div class="dr__field">
+                <label class="dr__label" for="styleTextColor" id="textColorLabel">文字颜色</label>
+                <input class="dr__color" type="color" id="styleTextColor" />
+              </div>
+              <div class="dr__field">
+                <label class="dr__label" for="styleBgColor" id="bgColorLabel">背景颜色</label>
+                <input class="dr__color" type="color" id="styleBgColor" />
+              </div>
+            </div>
+
+            <button class="dr__reset" id="btnStyleTheme" type="button" title="恢复为跟随 DBX 主题">
+              <span aria-hidden="true">↺</span><span id="themeResetText">跟随 DBX 主题</span>
+            </button>
+
+            <div class="dr__field">
+              <div class="dr__row">
+                <label class="dr__label" for="styleParaSpacing" id="paraSpacingLabel">段间距</label>
+                <output class="dr__value" id="styleParaSpacingValue">0.9em</output>
+              </div>
+              <input class="dr__range" type="range" id="styleParaSpacing" min="0" max="2.4" step="0.1" value="0.9" />
+            </div>
+
+            <div class="dr__field">
+              <div class="dr__row">
+                <label class="dr__label" for="styleLetterSpacing" id="letterSpacingLabel">字间距</label>
+                <output class="dr__value" id="styleLetterSpacingValue">0</output>
+              </div>
+              <input class="dr__range" type="range" id="styleLetterSpacing" min="-0.5" max="3" step="0.1" value="0" />
+            </div>
+
+            <label class="dr__check">
+              <input type="checkbox" id="styleIndent" />
+              <span id="indentText">首行缩进 2 字符</span>
+            </label>
+
+            <label class="dr__check">
+              <input type="checkbox" id="styleDark" />
+              <span id="darkText">夜间阅读模式</span>
+            </label>
+
+            <div class="dr__field">
+              <label class="dr__label" for="styleCustomCss" id="customCssLabel">自定义 CSS</label>
+              <textarea
+                class="dr__textarea"
+                id="styleCustomCss"
+                rows="6"
+                spellcheck="false"
+                placeholder=".page-content p { text-align: justify; }"
+              ></textarea>
+              <p class="dr__hint" id="customCssHint"></p>
+              <!-- 动态的"到底生效没有"另起一行，免得和上面的固定说明互相覆盖 -->
+              <p class="dr__hint" id="customCssStatus" hidden></p>
+              <!-- 自定义 CSS 实时校验：写错了立刻指出来，不用等到打开浏览器窗口才发现 -->
+              <pre class="dr__issues" id="customCssIssues" hidden></pre>
+            </div>
+          </div>
+
+          <!-- ── 页签 2：浏览器窗口 ─────────────────────────────────────────── -->
+          <div class="dr__pane" id="paneBrowser" data-drawer-pane="browser" hidden>
+            <p class="dr__hint" id="browserHint"></p>
+            <p class="dr__hint dr__hint--url" id="browserCurrent"></p>
+            <p class="dr__hint dr__hint--path" id="browserProfile"></p>
+            <button class="dr__btn dr__btn--wide" id="btnBrowserOpen" type="button">
+              <span id="browserOpenText">用浏览器窗口打开当前页面</span>
+            </button>
+            <!-- 阅读窗口没有地址栏，靠这个按钮把窗口里当前的地址取回来 -->
+            <button class="dr__btn dr__btn--wide" id="btnBrowserFetch" type="button">
+              <span id="browserFetchText">取回浏览器窗口的当前地址</span>
+            </button>
+            <p class="dr__hint" id="browserFetchHint"></p>
+            <!-- 取回后列出最近访问，点哪条开哪条 -->
+            <div class="dr__history" id="browserHistoryList" hidden></div>
+          </div>
+
+          <!-- ── 页签 3：设置 ───────────────────────────────────────────────── -->
+          <div class="dr__pane" id="paneGeneral" data-drawer-pane="general" hidden>
+            <div class="dr__field">
+              <div class="dr__legend" id="themeLegend">外观</div>
+              <div class="dr__segment" id="themeSegment" role="group">
+                <button class="dr__seg" type="button" data-theme-choice="light" id="themeLight">日间</button>
+                <button class="dr__seg" type="button" data-theme-choice="dark" id="themeDark">夜间</button>
+                <button class="dr__seg" type="button" data-theme-choice="follow" id="themeFollow">跟随 DBX</button>
+              </div>
+            </div>
+
+            <div class="dr__field">
+              <div class="dr__legend" id="hotkeyLegend">切换热键</div>
+              <div class="dr__row">
+                <input class="dr__input" id="hotkeyInput" readonly value="Escape" aria-label="切换热键" />
+                <button class="dr__btn" id="btnHotkeyReset" type="button">恢复默认</button>
+              </div>
+              <p class="dr__hint" id="hotkeyHint"></p>
+            </div>
+
+            <label class="dr__check">
+              <input type="checkbox" id="coverOnStart" />
+              <span id="coverOnStartText">打开工作台时先显示这个界面</span>
+            </label>
+            <label class="dr__check">
+              <input type="checkbox" id="coverHideOnFocus" />
+              <span id="coverHideOnFocusText">切回 DBX 时自动显示这个界面</span>
+            </label>
+            <label class="dr__check">
+              <input type="checkbox" id="coverHideOnBlur" />
+              <span id="coverHideOnBlurText">离开工作台时自动显示这个界面（推荐）</span>
+            </label>
+
+            <div class="dr__field dr__field--split">
+              <div class="dr__legend" id="readerLegend">阅读</div>
+              <label class="dr__check">
+                <input type="checkbox" id="optMergePages" />
+                <span id="optMergePagesText">合并分页（把同一章被切开的几页拼起来）</span>
+              </label>
+              <label class="dr__check">
+                <input type="checkbox" id="optTradToSimp" />
+                <span id="optTradToSimpText">繁体转简体</span>
+              </label>
+              <p class="dr__hint" id="optVersion"></p>
+            </div>
+
+            <!-- 状态自检：装完之后"到底通没通"应该一眼能看出来，
+                 而不是等出问题再互相猜。 -->
+            <div class="dr__field">
+              <div class="dr__legend" id="diagLegend">状态自检</div>
+              <ul class="diag" id="diagList"></ul>
+              <button class="dr__btn diag__refresh" id="btnDiagRefresh" type="button">
+                <span id="diagRefreshText">重新检测</span>
+              </button>
+            </div>
+          </div>
+          </div>
+
+          <div class="dr__foot">
+            <button class="dr__btn" id="btnStyleReset" type="button"><span id="resetAllText">恢复默认</span></button>
+          </div>
+        </aside>
+      </div>
+
+      <!-- ── status bar ────────────────────────────────────────────────────── -->
+      <footer class="st" id="statusBar">
+        <div class="st__group st__group--start">
+          <span class="st__spinner" id="statusSpinner" hidden aria-hidden="true"></span>
+          <span class="st__state" id="statusState">就绪</span>
+          <span class="st__sep" id="statusSep1" hidden>·</span>
+          <span class="badge" id="statusHttp" hidden></span>
+          <span class="badge badge--muted" id="statusPreset" hidden></span>
+        </div>
+        <div class="st__group st__group--end">
+          <span class="st__url" id="statusUrl" title=""></span>
+          <span class="st__meta" id="statusMeta"></span>
+          <span class="st__meta" id="statusNotice" hidden></span>
+        </div>
+      </footer>
+    </div>
+
+    <!-- Extra <style> blocks rewritten live by app.js (kept out of the way). -->
+    <style id="readerScope"></style>
+    <style id="readerCustom"></style>
+
+    <!-- ══ 伪装层：看起来就是一个普通的 SQL 工作台 ══════════════════════════
+         默认显示。右上角齿轮是进入真实界面与设置的唯一入口。
+         样式刻意全部走 DBX 主题 token，不引入任何“阅读”相关的痕迹。 -->
+    <div class="cv" id="coverLayer">
+      <header class="cv__bar">
+        <span class="cv__brand" id="coverBrand" aria-hidden="true">◧</span>
+        <label class="cv__field">
+          <span class="cv__label" id="coverConnLabel">连接</span>
+          <select class="cv__select" id="coverConn"></select>
+        </label>
+        <span class="cv__sep" aria-hidden="true"></span>
+        <label class="cv__field">
+          <span class="cv__label" id="coverDbLabel">数据库</span>
+          <select class="cv__select" id="coverDb"></select>
+        </label>
+        <span class="cv__sep" aria-hidden="true"></span>
+        <label class="cv__field cv__field--search">
+          <span class="cv__label" id="coverSearchLabel">检索</span>
+          <input class="cv__search" id="coverSearch" type="search" spellcheck="false" autocomplete="off" />
+        </label>
+        <span class="cv__sep" aria-hidden="true"></span>
+        <span class="cv__stat" id="coverStatus">就绪</span>
+        <span class="cv__spacer"></span>
+        <button class="cv__btn" id="coverRun" type="button" title="Ctrl+Enter">
+          <span aria-hidden="true">▶</span><span id="coverRunText">运行</span>
+        </button>
+        <button class="cv__icon" id="coverSettings" type="button" title="设置" aria-label="设置">
+          <span aria-hidden="true">⚙</span>
+        </button>
+      </header>
+
+      <section class="cv__editor">
+        <div class="cv__tabs">
+          <span class="cv__tab cv__tab--active" id="coverQueryTab">query-1.sql</span>
+          <span class="cv__tab" id="coverQueryTab2">query-2.sql</span>
+        </div>
+        <pre class="cv__code" id="coverCode" aria-label="SQL 编辑器"></pre>
+      </section>
+
+      <section class="cv__result">
+        <div class="cv__rhead">
+          <span class="cv__rtitle" id="coverResultTitle">结果</span>
+          <span class="cv__rmeta" id="coverResultMeta"></span>
+          <span class="cv__spacer"></span>
+          <!-- 结果区的一排小工具：让这个界面看起来是"能用的"，而不只是长得像 -->
+          <button class="cv__tbtn" id="coverCopy" type="button"><span id="coverCopyText">复制</span></button>
+          <button class="cv__tbtn" id="coverExport" type="button"><span id="coverExportText">导出 CSV</span></button>
+          <span class="cv__rmeta" id="coverElapsed"></span>
+        </div>
+        <div class="cv__rbody" id="coverGridHost"></div>
+      </section>
+
+      <footer class="cv__foot">
+        <span id="coverFootLeft"></span>
+        <span class="cv__spacer"></span>
+        <span id="coverFootRight"></span>
+      </footer>
+    </div>
+
+    <!-- ══ 设置面板（伪装层右上角入口） ═════════════════════════════════════ -->
+    <aside class="sp" id="settingsPanel" hidden>
+      <div class="sp__head">
+        <span class="sp__title" id="settingsTitle">设置</span>
+        <button class="sp__close" id="btnSettingsClose" type="button" title="关闭" aria-label="关闭">✕</button>
+      </div>
+      <div class="sp__body">
+        <div class="sp__group">
+          <div class="sp__legend" id="coverThemeLegend">外观</div>
+          <div class="sp__segment" id="coverThemeSegment" role="group">
+            <button class="sp__seg" type="button" data-theme-choice="light" id="coverThemeLight">日间</button>
+            <button class="sp__seg" type="button" data-theme-choice="dark" id="coverThemeDark">夜间</button>
+            <button class="sp__seg" type="button" data-theme-choice="follow" id="coverThemeFollow">跟随 DBX</button>
+          </div>
+        </div>
+
+        <div class="sp__group">
+          <div class="sp__legend" id="coverHotkeyLegend">切换热键</div>
+          <div class="sp__row">
+            <input class="sp__input" id="coverHotkeyInput" readonly value="Escape" aria-label="切换热键" />
+            <button class="sp__btn" id="coverHotkeyReset" type="button">恢复默认</button>
+          </div>
+          <p class="sp__hint" id="coverHotkeyHint"></p>
+        </div>
+
+        <!-- 其余开关都移到设置抽屉的「设置」页签里：这里只留"外观"和"切换热键"，
+             一眼能看到、也最常用。 -->
+      </div>
+    </aside>
+
+    <!-- 本地 txt 导入用；沙箱里 input[type=file] 是拿到用户本地文件内容的唯一途径。
+         没有 allow-downloads / 文件系统权限，所以只读不写。 -->
+    <input class="wb__file" id="localBookFile" type="file" accept=".txt,.text,.md,text/plain" hidden />
+
+    <!-- TRAD2SIMP-DATA:START -->
+    <!-- 繁简映射表（内联的惰性数据，由 app.js 用 JSON.parse 读取）。
+         不要改回外部 <script src>：真实宿主里那个方式不会执行，反而会把源码显示出来。
+         重新生成：node tools/build-trad2simp-inline.mjs -->
+    <script id="trad2simpData" type="application/json">{"chars":{"計":"计","訂":"订","訃":"讣","認":"认","譏":"讥","訐":"讦","訌":"讧","討":"讨","讓":"让","訕":"讪","訖":"讫","訓":"训","議":"议","訊":"讯","記":"记","訒":"讱","講":"讲","諱":"讳","謳":"讴","詎":"讵","訝":"讶","訥":"讷","許":"许","訛":"讹","論":"论","訩":"讻","訟":"讼","諷":"讽","設":"设","訪":"访","訣":"诀","證":"证","詁":"诂","訶":"诃","評":"评","詛":"诅","識":"识","詗":"诇","詐":"诈","訴":"诉","診":"诊","詆":"诋","謅":"诌","詞":"词","詘":"诎","詔":"诏","譯":"译","詒":"诒","誆":"诓","誄":"诔","試":"试","詿":"诖","詩":"诗","詰":"诘","詼":"诙","誠":"诚","誅":"诛","詵":"诜","話":"话","誕":"诞","詬":"诟","詮":"诠","詭":"诡","詢":"询","詣":"诣","諍":"诤","該":"该","詳":"详","詫":"诧","諢":"诨","詡":"诩","誡":"诫","誣":"诬","語":"语","誚":"诮","誤":"误","誥":"诰","誘":"诱","誨":"诲","誑":"诳","說":"说","誦":"诵","誒":"诶","請":"请","諸":"诸","諏":"诹","諾":"诺","讀":"读","諑":"诼","誹":"诽","課":"课","諉":"诿","諛":"谀","誰":"谁","諗":"谂","調":"调","諂":"谄","諒":"谅","諄":"谆","誶":"谇","談":"谈","誼":"谊","謀":"谋","諶":"谌","諜":"谍","謊":"谎","諫":"谏","諧":"谐","謔":"谑","謁":"谒","謂":"谓","諤":"谔","諭":"谕","諼":"谖","讒":"谗","諮":"谘","諳":"谙","諺":"谚","諦":"谛","謎":"谜","諞":"谝","謨":"谟","讜":"谠","謖":"谡","謝":"谢","謠":"谣","謗":"谤","謚":"谥","謙":"谦","謐":"谧","謹":"谨","謾":"谩","謫":"谪","譾":"谫","謬":"谬","譚":"谭","譖":"谮","譙":"谯","讕":"谰","譜":"谱","譎":"谲","讞":"谳","譴":"谴","譫":"谵","讖":"谶","譽":"誉","謄":"誊","讎":"雠","讐":"雠","諡":"谥","讙":"欢","讚":"赞","糾":"纠","紆":"纡","紅":"红","紂":"纣","紇":"纥","約":"约","級":"级","紈":"纨","纊":"纩","紀":"纪","紉":"纫","緯":"纬","紜":"纭","純":"纯","紕":"纰","紗":"纱","綱":"纲","納":"纳","紝":"纴","縱":"纵","綸":"纶","紛":"纷","紙":"纸","紋":"纹","紡":"纺","紵":"纻","紖":"纼","紐":"纽","紓":"纾","線":"线","紺":"绀","紲":"绁","紱":"绂","練":"练","組":"组","紳":"绅","細":"细","織":"织","終":"终","縐":"绉","絆":"绊","紼":"绋","絀":"绌","紹":"绍","繹":"绎","經":"经","紿":"绐","綁":"绑","絨":"绒","結":"结","絝":"绔","繞":"绕","絰":"绖","絎":"绗","繪":"绘","給":"给","絢":"绚","絳":"绛","絡":"络","絕":"绝","絞":"绞","統":"统","綆":"绠","綃":"绡","絹":"绢","繡":"绣","綌":"绤","綏":"绥","絛":"绦","繼":"继","綈":"绨","績":"绩","緒":"绪","綾":"绫","續":"续","綺":"绮","緋":"绯","綽":"绰","緔":"绱","緄":"绲","繩":"绳","維":"维","綿":"绵","綬":"绶","繃":"绷","綢":"绸","綯":"绹","綹":"绺","綣":"绻","綜":"综","綻":"绽","綰":"绾","綠":"绿","綴":"缀","緇":"缁","緙":"缂","緗":"缃","緘":"缄","緬":"缅","纜":"缆","緹":"缇","緲":"缈","緝":"缉","縕":"缊","繢":"缋","緦":"缌","綞":"缍","緞":"缎","緶":"缏","緱":"缑","縋":"缒","緩":"缓","締":"缔","縷":"缕","編":"编","緡":"缗","緣":"缘","縉":"缙","縛":"缚","縟":"缛","縝":"缜","縫":"缝","縞":"缟","纏":"缠","縭":"缡","縊":"缢","縑":"缣","繽":"缤","縹":"缥","縵":"缦","縲":"缧","纓":"缨","縮":"缩","繆":"缪","繅":"缫","纈":"缬","繚":"缭","繕":"缮","繒":"缯","繾":"缱","繰":"缲","繯":"缳","繳":"缴","纘":"缵","紘":"纮","絏":"绁","綉":"绣","絲":"丝","緊":"紧","緻":"致","綵":"彩","纔":"才","繭":"茧","纖":"纤","縴":"纤","纍":"累","繫":"系","綑":"捆","絃":"弦","縶":"絷","縈":"萦","網":"网","羅":"罗","釓":"钆","釔":"钇","針":"针","釘":"钉","釗":"钊","釙":"钋","釕":"钌","釷":"钍","釺":"钎","釧":"钏","釤":"钐","釩":"钒","釣":"钓","鍆":"钔","釹":"钕","釵":"钗","鈣":"钙","鈈":"钚","鈦":"钛","鉅":"钜","鈍":"钝","鈔":"钞","鈉":"钠","鋇":"钡","鋼":"钢","鈑":"钣","鈐":"钤","鑰":"钥","欽":"钦","鈞":"钧","鎢":"钨","鉤":"钩","鈧":"钪","鈁":"钫","鈥":"钬","鈄":"钭","鈕":"钮","鈀":"钯","鈺":"钰","錢":"钱","鉦":"钲","鉗":"钳","鈷":"钴","鉬":"钼","鈳":"钶","鉕":"钷","鈽":"钸","鈸":"钹","鉞":"钺","鑽":"钻","鉭":"钽","鉀":"钾","鈿":"钿","鈾":"铀","鐵":"铁","鉑":"铂","鈴":"铃","鑠":"铄","鉛":"铅","鉚":"铆","鈰":"铈","鉉":"铉","鉈":"铊","鉍":"铋","鈮":"铌","鈹":"铍","鐸":"铎","銬":"铐","銠":"铑","鉺":"铒","鋩":"铓","銪":"铕","鋮":"铖","鋏":"铗","鋣":"铘","鐃":"铙","銍":"铚","鐺":"铛","銅":"铜","鋁":"铝","銱":"铞","銦":"铟","鎧":"铠","鍘":"铡","銖":"铢","銑":"铣","鋌":"铤","銩":"铥","銛":"铦","鏵":"铧","銓":"铨","鎩":"铩","鉿":"铪","銚":"铫","鉻":"铬","銘":"铭","錚":"铮","銫":"铯","鉸":"铰","銥":"铱","鏟":"铲","銃":"铳","鐋":"铴","銨":"铵","銀":"银","銣":"铷","鑄":"铸","鐒":"铹","鋪":"铺","鋙":"铻","錸":"铼","鋱":"铽","鏈":"链","鏗":"铿","銷":"销","鎖":"锁","鋰":"锂","鋥":"锃","鋤":"锄","鍋":"锅","鋯":"锆","鋨":"锇","鏽":"锈","銼":"锉","鋝":"锊","鋒":"锋","鋅":"锌","鋶":"锍","鐦":"锎","鐧":"锏","銳":"锐","銻":"锑","鋃":"锒","鋟":"锓","鋦":"锔","錒":"锕","錆":"锖","鍺":"锗","錯":"错","錨":"锚","錛":"锛","錡":"锜","鍀":"锝","錁":"锞","錕":"锟","錩":"锠","錫":"锡","錮":"锢","鑼":"锣","錘":"锤","錐":"锥","錦":"锦","鑕":"锧","鍁":"锨","錈":"锩","鍃":"锪","錇":"锫","錟":"锬","錠":"锭","鍵":"键","鋸":"锯","錳":"锰","錙":"锱","鍥":"锲","鍇":"锴","鏘":"锵","鍶":"锶","鍔":"锷","鍤":"锸","鍬":"锹","鍛":"锻","鎪":"锼","鍠":"锽","鍰":"锾","鎄":"锿","鍍":"镀","鎂":"镁","鏤":"镂","鎡":"镃","鐨":"镄","鎇":"镅","鏌":"镆","鎮":"镇","鎛":"镈","鎘":"镉","鑷":"镊","鎲":"镋","鐫":"镌","鎳":"镍","鎿":"镎","鎦":"镏","鎬":"镐","鎊":"镑","鎰":"镒","鎵":"镓","鑌":"镔","鎔":"镕","鏢":"镖","鏜":"镗","鏝":"镘","鏍":"镙","鏰":"镚","鏞":"镛","鏡":"镜","鏑":"镝","鏃":"镞","鏐":"镠","鐔":"镡","钁":"镢","鏇":"旋","鐐":"镣","鏷":"镤","鑥":"镥","鐓":"镦","鑭":"镧","鐠":"镨","鑹":"镩","鏹":"镪","鐙":"镫","鑊":"镬","鐳":"镭","鐶":"镮","鐲":"镯","鐮":"镰","鐿":"镱","鑔":"镲","鑣":"镳","鑞":"镴","鑱":"镵","鑲":"镶","鏨":"錾","鍩":"锘","鎌":"镰","鎚":"锤","鍼":"针","鍊":"炼","錄":"录","鑾":"銮","鉢":"钵","缽":"钵","鐘":"钟","鍾":"钟","鑑":"鉴","鑒":"鉴","鑿":"凿","銜":"衔","銹":"锈","鑛":"矿","飩":"饨","飪":"饪","飫":"饫","飭":"饬","飯":"饭","飲":"饮","飴":"饴","飼":"饲","飽":"饱","飾":"饰","餃":"饺","餅":"饼","餌":"饵","餉":"饷","餑":"饽","餒":"馁","餓":"饿","餛":"馄","餞":"饯","餡":"馅","餵":"喂","餾":"馏","餿":"馊","饃":"馍","饅":"馒","饈":"馐","饉":"馑","饋":"馈","饌":"馔","饑":"饥","饒":"饶","饗":"飨","饜":"餍","饞":"馋","饢":"馕","餜":"馃","餳":"饧","餼":"饩","餖":"饾","饊":"馓","餚":"肴","餬":"糊","餘":"余","貝":"贝","貞":"贞","負":"负","貢":"贡","財":"财","責":"责","賢":"贤","敗":"败","賬":"账","貨":"货","販":"贩","貪":"贪","貧":"贫","貯":"贮","貫":"贯","貳":"贰","貴":"贵","買":"买","貸":"贷","貿":"贸","費":"费","賀":"贺","貽":"贻","賊":"贼","贄":"贽","賈":"贾","賄":"贿","貲":"赀","賃":"赁","賂":"赂","贓":"赃","資":"资","賅":"赅","賑":"赈","賒":"赊","賓":"宾","賦":"赋","賤":"贱","賭":"赌","賡":"赓","賜":"赐","賠":"赔","賻":"赙","賺":"赚","賽":"赛","購":"购","贅":"赘","贍":"赡","贏":"赢","贛":"赣","贊":"赞","贈":"赠","贗":"赝","贖":"赎","贔":"赑","贐":"赆","賾":"赜","賁":"贲","貰":"贳","貼":"贴","貺":"贶","贇":"赟","賚":"赉","質":"质","幀":"帧","楨":"桢","禎":"祯","偵":"侦","湞":"浈","則":"则","側":"侧","測":"测","廁":"厕","惻":"恻","員":"员","圓":"圆","隕":"陨","殞":"殒","損":"损","塤":"埙","勛":"勋","鄖":"郧","韻":"韵","遺":"遗","潰":"溃","匱":"匮","簣":"篑","憒":"愦","聵":"聩","蕢":"蒉","瑣":"琐","嗩":"唢","賴":"赖","懶":"懒","癩":"癞","籟":"籁","瀨":"濑","憤":"愤","噴":"喷","墳":"坟","債":"债","積":"积","嘖":"啧","漬":"渍","幘":"帻","簀":"箦","慣":"惯","摜":"掼","膩":"腻","貶":"贬","躓":"踬","車":"车","軋":"轧","軌":"轨","軍":"军","軒":"轩","軔":"轫","軛":"轭","軟":"软","軲":"轱","軻":"轲","軼":"轶","軾":"轼","較":"较","輅":"辂","載":"载","輊":"轾","輔":"辅","輕":"轻","輛":"辆","輜":"辎","輝":"辉","輟":"辍","輥":"辊","輦":"辇","輩":"辈","輪":"轮","輯":"辑","輳":"辏","輸":"输","輻":"辐","輾":"辗","輿":"舆","轂":"毂","轄":"辖","轅":"辕","轆":"辘","轉":"转","轍":"辙","轎":"轿","轔":"辚","轟":"轰","轡":"辔","轢":"轹","轤":"轳","連":"连","蓮":"莲","漣":"涟","煉":"炼","揀":"拣","庫":"库","褲":"裤","運":"运","暈":"晕","揮":"挥","渾":"浑","葷":"荤","鄆":"郓","琿":"珲","斬":"斩","塹":"堑","暫":"暂","漸":"渐","慚":"惭","嶄":"崭","軸":"轴","輒":"辄","輓":"挽","輼":"辒","匭":"匦","馬":"马","馮":"冯","馭":"驭","馳":"驰","馴":"驯","駁":"驳","駐":"驻","駑":"驽","駒":"驹","駔":"驵","駕":"驾","駘":"骀","駛":"驶","駙":"驸","駝":"驼","駟":"驷","駭":"骇","駱":"骆","駿":"骏","騁":"骋","騅":"骓","騎":"骑","騏":"骐","騙":"骗","騖":"骛","騫":"骞","騭":"骘","騮":"骝","騰":"腾","騶":"驺","騷":"骚","騸":"骟","騾":"骡","驀":"蓦","驃":"骠","驊":"骅","驌":"骕","驍":"骁","驏":"骣","驕":"骄","驗":"验","驚":"惊","驛":"驿","驟":"骤","驢":"驴","驥":"骥","驪":"骊","驤":"骧","駸":"骎","騂":"骍","駢":"骈","罵":"骂","篤":"笃","媽":"妈","嗎":"吗","碼":"码","螞":"蚂","瑪":"玛","榪":"杩","鳥":"鸟","鳧":"凫","鳩":"鸠","鳳":"凤","鳴":"鸣","鳶":"鸢","鴆":"鸩","鴉":"鸦","鴕":"鸵","鴟":"鸱","鴣":"鸪","鴦":"鸯","鴨":"鸭","鴯":"鸸","鴰":"鸹","鴛":"鸳","鴻":"鸿","鴿":"鸽","鵑":"鹃","鵒":"鹆","鵓":"鹁","鵝":"鹅","鵠":"鹄","鵡":"鹉","鵲":"鹊","鵪":"鹌","鵬":"鹏","鵰":"雕","鵷":"鹓","鵾":"鹍","鶉":"鹑","鶘":"鹕","鶚":"鹗","鶩":"鹜","鶬":"鸧","鶯":"莺","鶺":"鹡","鶴":"鹤","鶼":"鹣","鶿":"鹚","鷂":"鹞","鷓":"鹧","鷙":"鸷","鷗":"鸥","鷥":"鸶","鷦":"鹪","鷯":"鹩","鷲":"鹫","鷳":"鹇","鷺":"鹭","鷹":"鹰","鷽":"鸴","鸚":"鹦","鸛":"鹳","鸝":"鹂","鸞":"鸾","鸕":"鸬","島":"岛","梟":"枭","裊":"袅","搗":"捣","雞":"鸡","魚":"鱼","魯":"鲁","魴":"鲂","鮑":"鲍","鮒":"鲋","鮓":"鲊","鮚":"鲒","鮞":"鲕","鮫":"鲛","鮪":"鲔","鮭":"鲑","鮮":"鲜","鯀":"鲧","鯁":"鲠","鯇":"鲩","鯉":"鲤","鯊":"鲨","鯔":"鲻","鯖":"鲭","鯗":"鲞","鯛":"鲷","鯡":"鲱","鯤":"鲲","鯧":"鲳","鯨":"鲸","鯪":"鲮","鯫":"鲰","鯰":"鲶","鯽":"鲫","鯿":"鳊","鰈":"鲽","鰍":"鳅","鰒":"鳆","鰓":"鳃","鰕":"虾","鰜":"鳒","鰟":"鳑","鰠":"鳋","鰣":"鲥","鰥":"鳏","鰨":"鳎","鰩":"鳐","鰭":"鳍","鰱":"鲢","鰲":"鳌","鰳":"鳓","鰻":"鳗","鰾":"鳔","鱅":"鳙","鱉":"鳖","鱒":"鳟","鱔":"鳝","鱖":"鳜","鱗":"鳞","鱘":"鲟","鱝":"鲼","鱟":"鲎","鱠":"鲙","鱣":"鳣","鱧":"鳢","鱨":"鲿","鱭":"鲚","鱷":"鳄","鱸":"鲈","鱺":"鲡","魷":"鱿","鮁":"鲅","鮐":"鲐","鯝":"鲴","鯷":"鳀","鰹":"鲣","鰺":"鲹","鱈":"鳕","門":"门","閂":"闩","閃":"闪","閆":"闫","閈":"闬","閉":"闭","閌":"闶","閎":"闳","閏":"闰","閑":"闲","閒":"闲","間":"间","閔":"闵","閘":"闸","閡":"阂","閣":"阁","閤":"合","閩":"闽","閫":"阃","閬":"阆","閭":"闾","閶":"阊","閹":"阉","閻":"阎","閼":"阏","閽":"阍","閾":"阈","閿":"阌","闃":"阒","闆":"板","闇":"暗","闊":"阔","闋":"阕","闌":"阑","闍":"阇","闐":"阗","闔":"阖","闕":"阙","闖":"闯","關":"关","闞":"阚","闡":"阐","闢":"辟","闤":"阛","闥":"闼","闈":"闱","見":"见","觀":"观","規":"规","覓":"觅","視":"视","覘":"觇","覡":"觋","覦":"觎","親":"亲","覬":"觊","覯":"觏","覲":"觐","覺":"觉","覽":"览","覿":"觌","覷":"觑","現":"现","硯":"砚","蜆":"蚬","莧":"苋","筧":"笕","峴":"岘","窺":"窥","頁":"页","頂":"顶","頃":"顷","項":"项","順":"顺","頇":"顸","須":"须","頊":"顼","頑":"顽","頓":"顿","頎":"颀","頏":"颃","預":"预","頒":"颁","頌":"颂","頡":"颉","頜":"颌","頦":"颏","頭":"头","頤":"颐","頹":"颓","頻":"频","頰":"颊","顆":"颗","題":"题","額":"额","顎":"颚","顏":"颜","顒":"颙","顓":"颛","願":"愿","顙":"颡","顛":"颠","類":"类","顥":"颢","顧":"顾","顫":"颤","顯":"显","顰":"颦","顱":"颅","顴":"颧","顳":"颞","領":"领","頗":"颇","頸":"颈","頷":"颔","煩":"烦","碩":"硕","風":"风","颯":"飒","颭":"飐","颮":"飑","颳":"刮","颶":"飓","颸":"飔","颺":"飏","颻":"飖","颼":"飕","飄":"飘","飆":"飙","瘋":"疯","楓":"枫","嵐":"岚","颱":"台","龍":"龙","寵":"宠","龐":"庞","壟":"垄","攏":"拢","隴":"陇","聾":"聋","嚨":"咙","朧":"胧","瓏":"珑","櫳":"栊","瀧":"泷","蘢":"茏","籠":"笼","龔":"龚","龕":"龛","礱":"砻","曨":"昽","矓":"眬","襲":"袭","韋":"韦","韌":"韧","韍":"韨","韓":"韩","韙":"韪","韜":"韬","韞":"韫","煒":"炜","瑋":"玮","褘":"袆","違":"违","圍":"围","葦":"苇","偉":"伟","衛":"卫","幃":"帏","潿":"涠","韁":"缰","韃":"鞑","韆":"千","韉":"鞯","齒":"齿","齔":"龀","齕":"龁","齗":"龂","齙":"龅","齜":"龇","齟":"龃","齠":"龆","齡":"龄","齣":"出","齦":"龈","齧":"啮","齪":"龊","齬":"龉","齲":"龋","齷":"龌","齶":"腭","龜":"龟","麥":"麦","麩":"麸","麪":"面","麯":"曲","麴":"曲","麫":"面","黃":"黄","橫":"横","黌":"黉","齊":"齐","劑":"剂","濟":"济","擠":"挤","臍":"脐","薺":"荠","躋":"跻","霽":"霁","齏":"齑","嚌":"哜","蠐":"蛴","長":"长","張":"张","漲":"涨","帳":"帐","脹":"胀","倀":"伥","悵":"怅","萇":"苌","棖":"枨","東":"东","凍":"冻","陳":"陈","棟":"栋","崬":"岽","腖":"胨","廣":"广","擴":"扩","礦":"矿","曠":"旷","獷":"犷","壙":"圹","鄺":"邝","產":"产","薩":"萨","滻":"浐","專":"专","傳":"传","磚":"砖","囀":"啭","摶":"抟","團":"团","華":"华","樺":"桦","嘩":"哗","曄":"晔","燁":"烨","譁":"哗","業":"业","鄴":"邺","賣":"卖","櫝":"椟","牘":"牍","犢":"犊","黷":"黩","瀆":"渎","竇":"窦","咼":"呙","過":"过","禍":"祸","窩":"窝","蝸":"蜗","渦":"涡","媧":"娲","撾":"挝","睪":"睾","擇":"择","澤":"泽","釋":"释","懌":"怿","嶧":"峄","蘀":"萚","僉":"佥","檢":"检","險":"险","劍":"剑","簽":"签","儉":"俭","撿":"捡","瞼":"睑","殮":"殓","獫":"猃","薟":"莶","臉":"脸","襝":"裣","鹼":"碱","嶮":"崄","瀲":"潋","監":"监","藍":"蓝","籃":"篮","濫":"滥","檻":"槛","艦":"舰","尷":"尴","襤":"褴","攬":"揽","欖":"榄","鹽":"盐","單":"单","戰":"战","彈":"弹","蟬":"蝉","憚":"惮","撣":"掸","殫":"殚","癉":"瘅","簞":"箪","禪":"禅","嬋":"婵","嘽":"啴","堯":"尧","燒":"烧","澆":"浇","撓":"挠","橈":"桡","蕘":"荛","蹺":"跷","嘵":"哓","嬈":"娆","嶢":"峣","僥":"侥","曉":"晓","翹":"翘","蟯":"蛲","區":"区","歐":"欧","驅":"驱","軀":"躯","樞":"枢","嘔":"呕","毆":"殴","甌":"瓯","慪":"怄","摳":"抠","傴":"伛","嶇":"岖","壽":"寿","濤":"涛","禱":"祷","擣":"捣","籌":"筹","躊":"踌","儔":"俦","疇":"畴","燾":"焘","檮":"梼","兩":"两","倆":"俩","魎":"魉","婁":"娄","樓":"楼","摟":"搂","簍":"篓","屢":"屡","螻":"蝼","髏":"髅","嘍":"喽","嶁":"嵝","漊":"溇","蔞":"蒌","數":"数","藪":"薮","蘿":"萝","邏":"逻","籮":"箩","玀":"猡","囉":"啰","欏":"椤","盧":"卢","廬":"庐","蘆":"芦","爐":"炉","臚":"胪","櫨":"栌","瀘":"泸","壚":"垆","價":"价","礙":"碍","愛":"爱","襖":"袄","壩":"坝","罷":"罢","擺":"摆","辦":"办","幫":"帮","寶":"宝","報":"报","備":"备","憊":"惫","筆":"笔","畢":"毕","幣":"币","邊":"边","變":"变","辯":"辩","辮":"辫","標":"标","癟":"瘪","瀕":"濒","濱":"滨","撥":"拨","補":"补","參":"参","蠶":"蚕","倉":"仓","滄":"沧","蒼":"苍","艙":"舱","層":"层","摻":"掺","攙":"搀","場":"场","嘗":"尝","償":"偿","腸":"肠","廠":"厂","暢":"畅","徹":"彻","塵":"尘","襯":"衬","稱":"称","懲":"惩","遲":"迟","衝":"冲","蟲":"虫","醜":"丑","礎":"础","儲":"储","觸":"触","處":"处","瘡":"疮","創":"创","辭":"辞","叢":"丛","湊":"凑","竄":"窜","達":"达","帶":"带","擔":"担","膽":"胆","當":"当","黨":"党","導":"导","燈":"灯","鄧":"邓","敵":"敌","糴":"籴","遞":"递","點":"点","澱":"淀","電":"电","鼕":"冬","動":"动","獨":"独","斷":"断","對":"对","隊":"队","噸":"吨","奪":"夺","墮":"堕","兒":"儿","爾":"尔","發":"发","礬":"矾","範":"范","飛":"飞","奮":"奋","糞":"粪","豐":"丰","婦":"妇","膚":"肤","岡":"冈","蓋":"盖","乾":"干","幹":"干","榦":"干","趕":"赶","個":"个","鞏":"巩","溝":"沟","構":"构","穀":"谷","歸":"归","國":"国","畫":"画","匯":"汇","會":"会","夥":"伙","獲":"获","穫":"获","擊":"击","極":"极","際":"际","傢":"家","艱":"艰","殲":"歼","薦":"荐","將":"将","漿":"浆","槳":"桨","獎":"奖","醬":"酱","膠":"胶","階":"阶","癤":"疖","潔":"洁","藉":"借","僅":"仅","競":"竞","舊":"旧","劇":"剧","據":"据","懼":"惧","捲":"卷","開":"开","殼":"壳","剋":"克","墾":"垦","懇":"恳","睏":"困","臘":"腊","蠟":"蜡","來":"来","蘭":"兰","攔":"拦","欄":"栏","爛":"烂","壘":"垒","離":"离","裡":"里","禮":"礼","隸":"隶","簾":"帘","聯":"联","憐":"怜","糧":"粮","療":"疗","遼":"辽","瞭":"了","獵":"猎","臨":"临","鄰":"邻","嶺":"岭","靈":"灵","劉":"刘","虜":"虏","鹵":"卤","陸":"陆","慮":"虑","亂":"乱","侖":"仑","黽":"黾","麼":"么","黴":"霉","矇":"蒙","濛":"蒙","夢":"梦","麵":"面","廟":"庙","滅":"灭","衊":"蔑","畝":"亩","惱":"恼","腦":"脑","擬":"拟","釀":"酿","瘧":"疟","盤":"盘","蘋":"苹","憑":"凭","撲":"扑","僕":"仆","樸":"朴","啟":"启","氣":"气","遷":"迁","牽":"牵","竅":"窍","竊":"窃","寢":"寝","慶":"庆","瓊":"琼","鞦":"秋","權":"权","勸":"劝","確":"确","擾":"扰","熱":"热","灑":"洒","傘":"伞","喪":"丧","掃":"扫","澀":"涩","殺":"杀","曬":"晒","傷":"伤","捨":"舍","審":"审","瀋":"沈","聲":"声","勝":"胜","聖":"圣","師":"师","濕":"湿","時":"时","實":"实","適":"适","勢":"势","獸":"兽","書":"书","屬":"属","術":"术","樹":"树","帥":"帅","雙":"双","鬆":"松","肅":"肃","蘇":"苏","雖":"虽","隨":"随","歲":"岁","孫":"孙","臺":"台","檯":"台","態":"态","攤":"摊","灘":"滩","癱":"瘫","罈":"坛","嘆":"叹","歎":"叹","湯":"汤","燙":"烫","體":"体","條":"条","聽":"听","廳":"厅","圖":"图","塗":"涂","橢":"椭","窪":"洼","襪":"袜","彎":"弯","灣":"湾","萬":"万","為":"为","溫":"温","聞":"闻","穩":"稳","問":"问","甕":"瓮","嗚":"呜","烏":"乌","無":"无","蕪":"芜","吳":"吴","塢":"坞","務":"务","霧":"雾","犧":"牺","習":"习","係":"系","戲":"戏","蝦":"虾","峽":"峡","狹":"狭","嚇":"吓","鹹":"咸","憲":"宪","縣":"县","獻":"献","鄉":"乡","蕭":"萧","嘯":"啸","蠍":"蝎","協":"协","挾":"挟","攜":"携","脅":"胁","寫":"写","瀉":"泻","釁":"衅","興":"兴","洶":"汹","虛":"虚","噓":"嘘","鬚":"须","懸":"悬","選":"选","癬":"癣","學":"学","勳":"勋","尋":"寻","遜":"逊","壓":"压","啞":"哑","亞":"亚","嚥":"咽","煙":"烟","嚴":"严","巖":"岩","厭":"厌","艷":"艳","揚":"扬","陽":"阳","癢":"痒","養":"养","樣":"样","藥":"药","爺":"爷","葉":"叶","醫":"医","儀":"仪","蟻":"蚁","義":"义","藝":"艺","異":"异","蔭":"荫","陰":"阴","隱":"隐","應":"应","嬰":"婴","櫻":"樱","蠅":"蝇","穎":"颖","喲":"哟","擁":"拥","傭":"佣","癰":"痈","踴":"踊","優":"优","憂":"忧","郵":"邮","猶":"犹","漁":"渔","娛":"娱","與":"与","嶼":"屿","籲":"吁","鬱":"郁","淵":"渊","園":"园","遠":"远","躍":"跃","嶽":"岳","雲":"云","鄭":"郑","幟":"帜","製":"制","腫":"肿","種":"种","眾":"众","晝":"昼","硃":"朱","燭":"烛","築":"筑","莊":"庄","樁":"桩","妝":"妆","裝":"装","壯":"壮","狀":"状","準":"准","濁":"浊","總":"总","狽":"狈","摺":"折","徵":"征","癥":"症","嚮":"向","醞":"酝","竈":"灶","齋":"斋","氈":"毡","臟":"脏","髒":"脏","棗":"枣","禦":"御","雜":"杂","億":"亿","憶":"忆","褻":"亵","響":"响","糶":"粜","隻":"只","祇":"只","衹":"只","鬥":"斗","後":"后","劃":"划","丟":"丢","併":"并","並":"并","幷":"并","竝":"并","佈":"布","佇":"伫","佔":"占","侷":"局","陞":"升","羣":"群","峯":"峰","牀":"床","邨":"村","祕":"秘","牠":"它","喫":"吃","徬":"彷","覈":"核","慾":"欲","慼":"戚","憇":"憩","掛":"挂","罣":"挂","燬":"毁","譭":"毁","犇":"奔","玆":"兹","珮":"佩","痲":"麻","痾":"疴","眥":"眦","瞇":"眯","稜":"棱","筍":"笋","籐":"藤","粧":"妆","紮":"扎","羶":"膻","脣":"唇","脩":"修","菸":"烟","蕁":"荨","薹":"苔","藷":"薯","虯":"虬","蛺":"蛱","衚":"胡","袞":"衮","貍":"狸","賸":"剩","趼":"茧","蹧":"糟","躉":"趸","迺":"乃","遯":"遁","醃":"腌","釐":"厘","鈎":"钩","雋":"隽","噁":"恶","兇":"凶","兌":"兑","姦":"奸","廄":"厩","弒":"弑","慍":"愠","憫":"悯","懞":"蒙","攣":"挛","斕":"斓","旣":"既","暱":"昵","桿":"杆","棄":"弃","樑":"梁","殭":"僵","汙":"污","洩":"泄","浹":"浃","涇":"泾","淒":"凄","悽":"凄","淺":"浅","渙":"涣","溈":"沩","潙":"沩","溼":"湿","潑":"泼","瀟":"潇","瀰":"弥","烴":"烃","煥":"焕","熒":"荧","燼":"烬","爍":"烁","獄":"狱","獰":"狞","琺":"珐","痙":"痉","瘍":"疡","癆":"痨","皚":"皑","盞":"盏","瞞":"瞒","矚":"瞩","砲":"炮","硨":"砗","禿":"秃","稈":"秆","篋":"箧","籜":"箨","糝":"糁","羆":"罴","耬":"耧","腎":"肾","艤":"舣","苧":"苎","蘊":"蕴","蘚":"藓","蝕":"蚀","註":"注","誌":"志","豬":"猪","踐":"践","蹤":"踪","閱":"阅","飢":"饥","館":"馆","鬧":"闹","閙":"闹","著":"着","於":"于","拋":"抛","攪":"搅","曖":"暧","枴":"拐","歿":"殁","氫":"氢","淥":"渌","潯":"浔","爭":"争","甦":"苏","畬":"畲","瘂":"痖","癇":"痫","皰":"疱","盪":"荡","稟":"禀","稅":"税","羥":"羟","艫":"舻","藹":"蔼","蠔":"蚝","跡":"迹","蹟":"迹","躥":"蹿","邐":"逦","陝":"陕","剷":"铲","揹":"背","擡":"抬","獃":"呆","甯":"宁","痠":"酸","皁":"皂","蒐":"搜","訢":"欣","躂":"跶","逕":"径","裏":"里","癡":"痴","椏":"桠","櫺":"棂","毿":"毵","氬":"氩","澠":"渑","灄":"滠","熗":"炝","犛":"牦","猻":"狲","獼":"猕","璉":"琏","瓔":"璎","瘞":"瘗","癘":"疠","碭":"砀","磣":"碜","穡":"穑","糰":"团","罌":"罂","翬":"翚","聳":"耸","膃":"腽","臏":"膑","蔥":"葱","薈":"荟","蟄":"蛰","褸":"褛","趲":"趱","躒":"跞","躚":"跹","鄒":"邹","鄔":"邬","鄶":"郐","酈":"郦","釃":"酾","陘":"陉","鬮":"阄","鼉":"鼍","儘":"尽","凈":"净","唸":"念","嚐":"尝","僱":"雇","喦":"岩","坵":"丘","墻":"墙","嫺":"娴","搆":"构","敎":"教","晳":"晰","槨":"椁","欵":"款","毘":"毗","滙":"汇","濬":"浚","燄":"焰","猨":"猿","甎":"砖","疎":"疏","皷":"鼓","盃":"杯","碁":"棋","稾":"稿","箇":"个","翫":"玩","艸":"草","菴":"庵","蓆":"席","蜨":"蝶","螘":"蚁","詠":"咏","諠":"喧","跼":"局","迻":"移","鷄":"鸡","龎":"庞","糉":"粽","糭":"粽","耡":"锄","舖":"铺","蕋":"蕊","穽":"阱","襬":"摆","羈":"羁","滸":"浒","璫":"珰","箏":"筝","簑":"蓑","簷":"檐","檁":"檩","櫞":"橼","蘺":"蓠","蝟":"猬","蠑":"蝾","螿":"螀","躕":"蹰","戇":"戆","戀":"恋","蠻":"蛮","孌":"娈","巒":"峦","孿":"孪","欒":"栾","喚":"唤","嘮":"唠","嘸":"呒","噯":"嗳","噲":"哙","嚙":"啮","囁":"嗫","塋":"茔","彿":"佛","陣":"阵","賙":"赒","爲":"为","況":"况","涼":"凉","減":"减","凜":"凛","貓":"猫","豔":"艳","彞":"彝","槓":"杠","疊":"叠","癒":"愈","盜":"盗","攆":"撵","攖":"撄","撈":"捞","撳":"揿","擄":"掳","擼":"撸","澇":"涝","澗":"涧","潁":"颍","漵":"溆","瀅":"滢","灝":"灏","燉":"炖","熾":"炽","磽":"硗","礄":"硚","磧":"碛","穌":"稣","籤":"签","籩":"笾","蒞":"莅","蓴":"莼","蘞":"蔹","蘄":"蕲","蛻":"蜕","觴":"觞","谿":"溪","豎":"竖","躪":"躏","躦":"躜","靄":"霭","鼴":"鼹","鵜":"鹈","鶇":"鸫","鷚":"鹨","鸏":"鹲","鸘":"鹴","魛":"鱽","鮃":"鲆","鮍":"鲏","鮶":"鲪","鯢":"鲵","鯴":"鲺","攛":"撺","攢":"攒","掗":"挜","搵":"揾","妳":"你","祂":"他","託":"托","誾":"訚","詖":"诐","誖":"悖","譌":"讹","讃":"赞","讌":"宴","侶":"侣","俁":"俣","倖":"幸","傯":"偬","僂":"偻","僨":"偾","儕":"侪","勻":"匀","勑":"敕","厠":"厕","厙":"厍","厤":"历","囅":"冁","囌":"苏","囂":"嚣","囓":"啮","塚":"冢","墜":"坠","壎":"埙","壜":"坛","媯":"妫","嫋":"袅","媼":"媪","嬤":"嬷","嬾":"懒","孃":"娘","寬":"宽","屜":"屉","屨":"屦","屭":"屃","嶸":"嵘","嶗":"崂","嶴":"岙","幬":"帱","廩":"廪","廂":"厢","廐":"厩","強":"强","彊":"强","弳":"弪","慳":"悭","懍":"懔","懽":"欢","敍":"叙","櫧":"槠","櫓":"橹","欞":"棂","氳":"氲","濰":"潍","瀾":"澜","灤":"滦","灩":"滟","犖":"荦","猙":"狰","獁":"犸","獮":"狝","獺":"獭","瑩":"莹","璡":"琎","瓚":"瓒","癲":"癫","瘻":"瘘","癭":"瘿","禕":"祎","秈":"籼","穠":"秾","窯":"窑","窶":"窭","郟":"郏","靆":"叇","靉":"叆","鮎":"鲇","鮝":"鲞","鰐":"鳄","鰉":"鳇","鱓":"鳝","鱤":"鳡","黲":"黪","鼇":"鳌","鼈":"鳖","傑":"杰","淨":"净","螢":"萤","朮":"术","葯":"药","剮":"剐","嗆":"呛","噝":"咝","嚳":"喾","堅":"坚","堝":"埚","堊":"垩","奩":"奁","宮":"宫","營":"营","櫚":"榈","煢":"茕","閨":"闺","彥":"彦","彫":"雕","靑":"青","鞽":"鞒","鬨":"哄","唄":"呗","吶":"呐","摀":"捂","鬩":"阋","楊":"杨","殤":"殇","莖":"茎","脛":"胫","崢":"峥","掙":"挣","傚":"效","儗":"拟","凴":"凭","刱":"创","劄":"札","啗":"啖","囘":"回","墯":"堕","奬":"奖","崑":"昆","崙":"仑","幇":"帮","彛":"彝","徧":"遍","慤":"悫","摠":"总","敺":"驱","歛":"敛","汚":"污","濵":"滨","竪":"竖","胷":"胸","蘂":"蕊","虗":"虚","鄕":"乡","綳":"绷","繖":"伞","罋":"瓮","貮":"贰","蹔":"暂","隂":"阴","霛":"灵","頟":"额","汎":"泛","菓":"果","蒓":"莼","薴":"苎","衞":"卫","貟":"员","賛":"赞","贒":"贤","颿":"帆","棊":"棋","瑯":"琅","瘉":"愈","擻":"擞","慄":"栗","噹":"当","嗶":"哔","髕":"髌","驂":"骖","嶔":"嵚","噦":"哕","蕕":"莸","蕓":"芸","農":"农","訁":"讠","糹":"纟","釒":"钅","飠":"饣","暉":"晖","煬":"炀","藺":"蔺","晉":"晋","麽":"么","脫":"脱","兗":"兖","攷":"考","勩":"勚","叡":"睿","垜":"垛","覊":"羁","綫":"线","媿":"愧","袴":"裤","搾":"榨","弔":"吊","礮":"炮","傾":"倾","潛":"潜","姪":"侄","亙":"亘","窰":"窑","竚":"伫","畧":"略","慙":"惭","罸":"罚","駡":"骂","顔":"颜","犂":"犁","脇":"胁","萵":"莴","蕒":"荬","薊":"蓟","骯":"肮","斃":"毙","彆":"别","撐":"撑","恥":"耻","櫥":"橱","廚":"厨","聰":"聪","囪":"囱","從":"从","閥":"阀","擱":"搁","馱":"驮","這":"这","剴":"剀","臠":"脔","巰":"巯","滎":"荥","葒":"荭","葤":"荮","蕆":"蒇","鎣":"蓥","蕷":"蓣","惲":"恽","撟":"挢","擷":"撷","嚶":"嘤","濼":"泺","瀠":"潆","瀦":"潴","騍":"骒","驁":"骜","驄":"骢","梘":"枧","槧":"椠","櫫":"橥","軑":"轪","軹":"轵","軫":"轸","軤":"轷","軺":"轺","輇":"辁","輞":"辋","賕":"赇","齎":"赍","賧":"赕","賵":"赗","澩":"泶","碸":"砜","瞘":"眍","穭":"稆","鴇":"鸨","鴝":"鸲","鵂":"鸺","鶓":"鹋","鵯":"鹎","鶥":"鹛","鷸":"鹬","鸌":"鹱","褳":"裢","襇":"裥","皸":"皲","耮":"耢","顬":"颥","觶":"觯","靚":"靓","鰵":"鳘","鶻":"鹘","髖":"髋","鵐":"鹀","鶊":"鹒","鷫":"鹔","鶡":"鹖","鶖":"鹙","鶹":"鹠","鷁":"鹢","鷖":"鹥","鸇":"鹯","鮊":"鲌","鮦":"鲖","鰮":"鳁","鰃":"鳂","鰁":"鳈","鰼":"鳛","伕":"夫","佪":"徊","俠":"侠","們":"们","倣":"仿","倫":"伦","偺":"咱","偽":"伪","傖":"伧","僇":"戮","僑":"侨","儂":"侬","儅":"当","儈":"侩","儐":"傧","儷":"俪","儸":"罗","儺":"傩","儻":"傥","儼":"俨","內":"内","冊":"册","冑":"胄","冪":"幂","凱":"凯","別":"别","刪":"删","剄":"刭","剎":"刹","剛":"刚","剝":"剥","劊":"刽","劌":"刿","勁":"劲","勗":"勖","勞":"劳","勦":"剿","勱":"劢","勵":"励","卹":"恤","卻":"却","厲":"厉","厴":"厣","呂":"吕","啣":"衔","喬":"乔","嗇":"啬","嘜":"唛","嘰":"叽","噠":"哒","噥":"哝","嚀":"咛","嚕":"噜","嚦":"呖","囈":"呓","囑":"嘱","圇":"囵","坰":"垧","埡":"垭","執":"执","堿":"碱","塊":"块","塏":"垲","塒":"埘","墊":"垫","墑":"墒","壇":"坛","壞":"坏","壢":"坜","壺":"壶","夠":"够","夾":"夹","奐":"奂","奧":"奥","姍":"姗","婭":"娅","嫗":"妪","嫵":"妩","嫻":"娴","嬌":"娇","嬙":"嫱","嬝":"袅","嬡":"嫒","嬪":"嫔","嬸":"婶","寧":"宁","屆":"届","屝":"扉","崍":"崃","崗":"岗","崠":"岽","崳":"嵛","嵒":"岩","嶠":"峤","巋":"岿","巔":"巅","巹":"卺","幗":"帼","幾":"几","庂":"仄","廈":"厦","廝":"厮","廡":"庑","廢":"废","廱":"痈","彌":"弥","彙":"汇","徑":"径","徠":"徕","復":"复","恆":"恒","悅":"悦","悶":"闷","惡":"恶","愜":"惬","愨":"悫","愴":"怆","愷":"恺","愾":"忾","慇":"殷","慘":"惨","慟":"恸","慫":"怂","憮":"怃","懟":"怼","懣":"懑","懨":"恹","懷":"怀","懺":"忏","懾":"慑","戉":"钺","戔":"戋","戧":"戗","戩":"戬","戶":"户","扠":"叉","扺":"抵","抴":"曳","捫":"扪","掄":"抡","採":"采","換":"换","搖":"摇","搶":"抢","摑":"掴","摯":"挚","撚":"捻","撢":"掸","撫":"抚","撻":"挞","擋":"挡","擯":"摈","擰":"拧","擲":"掷","攄":"摅","攝":"摄","敘":"叙","斂":"敛","旂":"旗","暘":"阳","暸":"了","曆":"历","曇":"昙","柵":"栅","梔":"栀","棧":"栈","棲":"栖","榮":"荣","榿":"桤","槃":"盘","槍":"枪","樂":"乐","樅":"枞","橋":"桥","機":"机","檉":"柽","檔":"档","檜":"桧","檣":"樯","檳":"槟","檸":"柠","櫃":"柜","櫛":"栉","櫟":"栎","櫪":"枥","櫬":"榇","櫸":"榉","歟":"欤","歡":"欢","歷":"历","殘":"残","殯":"殡","毀":"毁","毬":"球","氌":"氇","氾":"泛","決":"决","沒":"没","沖":"冲","淚":"泪","淪":"沦","淶":"涞","湧":"涌","滌":"涤","滬":"沪","滯":"滞","滲":"渗","滷":"卤","滾":"滚","滿":"满","漚":"沤","漢":"汉","潤":"润","潷":"滗","澮":"浍","濃":"浓","濘":"泞","濺":"溅","濾":"滤","瀏":"浏","瀝":"沥","灃":"沣","灕":"漓","災":"灾","燐":"磷","燜":"焖","燦":"灿","燴":"烩","牆":"墙","牴":"抵","獅":"狮","獪":"狯","玨":"珏","瑤":"瑶","璣":"玑","璦":"瑷","環":"环","璽":"玺","瓖":"镶","疿":"痱","痳":"麻","痺":"痹","瘓":"痪","瘺":"瘘","癮":"瘾","皺":"皱","盡":"尽","睜":"睁","睞":"睐","矯":"矫","硤":"硖","磯":"矶","礪":"砺","礫":"砾","祅":"祆","祐":"佑","祿":"禄","禰":"祢","穢":"秽","窮":"穷","笻":"筇","箋":"笺","節":"节","篠":"筱","篩":"筛","篳":"筚","簡":"简","簫":"箫","籪":"簖","籬":"篱","粵":"粤","糢":"馍","糲":"粝","縚":"绦","縳":"缚","繈":"襁","罰":"罚","羋":"芈","羨":"羡","聶":"聂","職":"职","聹":"聍","脈":"脉","腡":"脶","腳":"脚","膾":"脍","膿":"脓","臥":"卧","舉":"举","芻":"刍","茲":"兹","荊":"荆","莢":"荚","萊":"莱","蒔":"莳","蓀":"荪","蓯":"苁","蓽":"荜","蔆":"菱","蔔":"卜","蔣":"蒋","蔦":"茑","蕎":"荞","蕩":"荡","薌":"芗","薑":"姜","薔":"蔷","藎":"荩","藶":"苈","蘗":"蘖","號":"号","虧":"亏","螄":"蛳","蟈":"蝈","蟣":"虮","蟶":"蛏","蠆":"虿","蠣":"蛎","蠱":"蛊","複":"复","襠":"裆","証":"证","誇":"夸","譟":"噪","護":"护","豈":"岂","賞":"赏","趙":"赵","趨":"趋","踡":"蜷","踫":"碰","蹌":"跄","蹕":"跸","蹠":"跖","蹣":"蹒","躑":"踯","躡":"蹑","迆":"迤","迴":"回","週":"周","進":"进","遊":"游","遙":"遥","邁":"迈","還":"还","邇":"迩","郃":"合","鄲":"郸","釅":"酽","釦":"扣","釬":"钎","鉆":"钻","鉋":"刨","銲":"焊","錶":"表","鎗":"枪","阨":"厄","阯":"址","陜":"陕","隄":"堤","隉":"陧","雛":"雏","難":"难","霑":"沾","霤":"溜","靂":"雳","靜":"静","靦":"腼","靨":"靥","顢":"颟","餽":"馈","髮":"发","鬍":"胡","鬢":"鬓","鰷":"鲦","鶱":"骞","鷴":"鹇","鹺":"鹾","麗":"丽","黿":"鼋"},"phrases":{"著名":"著名","著作":"著作","著者":"著者","著文":"著文","著書":"著书","著書立說":"著书立说","著述":"著述","著錄":"著录","著稱":"著称","著作權":"著作权","著作權法":"著作权法","著作人":"著作人","著作等身":"著作等身","原著":"原著","名著":"名著","巨著":"巨著","譯著":"译著","論著":"论著","專著":"专著","遺著":"遗著","編著":"编著","編著者":"编著者","顯著":"显著","昭著":"昭著","卓著":"卓著","惡名昭著":"恶名昭著","臭名昭著":"臭名昭著","見微知著":"见微知著","知微見著":"知微见著","著手":"着手","著眼":"着眼","著眼點":"着眼点","著重":"着重","著重號":"着重号","著力":"着力","著想":"着想","著急":"着急","著火":"着火","著涼":"着凉","著迷":"着迷","著魔":"着魔","著陸":"着陆","著色":"着色","著床":"着床","著裝":"着装","著地":"着地","著落":"着落","著實":"着实","著意":"着意","著筆":"着笔","著墨":"着墨","著棋":"着棋","著忙":"着忙","著慌":"着慌","著惱":"着恼","著邊際":"着边际","附著":"附着","執著":"执着","沉著":"沉着","黏著":"黏着","膠著":"胶着","固著":"固着","看著":"看着","想著":"想着","說著":"说着","笑著":"笑着","走著":"走着","拿著":"拿着","坐著":"坐着","站著":"站着","躺著":"躺着","哭著":"哭着","忙著":"忙着","等著":"等着","接著":"接着","沿著":"沿着","向著":"向着","對著":"对着","為著":"为着","隨著":"随着","跟著":"跟着","憑著":"凭着","靠著":"靠着","依著":"依着","按著":"按着","順著":"顺着","迎著":"迎着","圍著":"围着","抱著":"抱着","拖著":"拖着","拉著":"拉着","牽著":"牵着","摟著":"搂着","盯著":"盯着","瞧著":"瞧着","望著":"望着","聽著":"听着","記著":"记着","讀著":"读着","寫著":"写着","畫著":"画着","唱著":"唱着","跳著":"跳着","跑著":"跑着","開著":"开着","關著":"关着","亮著":"亮着","忍著":"忍着","憋著":"憋着","躲著":"躲着","藏著":"藏着","燒著":"烧着","煮著":"煮着","燉著":"炖着","曬著":"晒着","吹著":"吹着","飄著":"飘着","飛著":"飞着","爬著":"爬着","滾著":"滚着","轉著":"转着","抖著":"抖着","晃著":"晃着","搖著":"摇着","擺著":"摆着","掛著":"挂着","貼著":"贴着","挨著":"挨着","擠著":"挤着","塞著":"塞着","壓著":"压着","頂著":"顶着","扛著":"扛着","提著":"提着","舉著":"举着","揮著":"挥着","捧著":"捧着","端著":"端着","咬著":"咬着","含著":"含着","抿著":"抿着","閉著":"闭着","睜著":"睁着","瞇著":"眯着","豎著":"竖着","橫著":"横着","斜著":"斜着","倒著":"倒着","醒著":"醒着","睡著":"睡着","活著":"活着","閒著":"闲着","餓著":"饿着","撐著":"撑着","硬著":"硬着","熱著":"热着","涼著":"凉着","凍著":"冻着","淋著":"淋着","泡著":"泡着","熬著":"熬着","炒著":"炒着","切著":"切着","數著":"数着","算著":"算着","乾隆":"乾隆","乾坤":"乾坤","乾卦":"乾卦","乾造":"乾造","乾陵":"乾陵","乾清宮":"乾清宫","乾淨":"干净","乾淨俐落":"干净利落","乾燥":"干燥","乾脆":"干脆","乾杯":"干杯","乾旱":"干旱","乾糧":"干粮","乾癟":"干瘪","乾枯":"干枯","乾柴":"干柴","乾貨":"干货","乾洗":"干洗","乾電池":"干电池","乾兒子":"干儿子","乾爹":"干爹","乾媽":"干妈","乾笑":"干笑","乾咳":"干咳","乾著急":"干着急","餅乾":"饼干","葡萄乾":"葡萄干","豆腐乾":"豆腐干","曬乾":"晒干","擦乾":"擦干","藉口":"借口","藉故":"借故","藉此":"借此","藉由":"借由","藉助":"借助","藉機":"借机","藉勢":"借势","藉端":"借端","藉著":"借着","憑藉":"凭借","慰藉":"慰藉","狼藉":"狼藉","杯盤狼藉":"杯盘狼藉","聲名狼藉":"声名狼藉","蘊藉":"蕴藉","風流蘊藉":"风流蕴藉","鍾情":"钟情","鍾愛":"钟爱","一見鍾情":"一见钟情","鍾馗":"钟馗","鍾靈毓秀":"钟灵毓秀","老態龍鍾":"老态龙钟","鐘錶":"钟表","鐘樓":"钟楼","鐘聲":"钟声","鐘點":"钟点","鐘面":"钟面","鐘乳石":"钟乳石","鐘擺":"钟摆","分鐘":"分钟","時鐘":"时钟","鬧鐘":"闹钟","掛鐘":"挂钟","座鐘":"座钟","教堂鐘聲":"教堂钟声","瀋陽":"沈阳","瀋陽市":"沈阳市","麵包":"面包","麵包店":"面包店","麵包車":"面包车","麵條":"面条","麵粉":"面粉","麵食":"面食","麵團":"面团","麵筋":"面筋","麵糊":"面糊","麵皮":"面皮","麵醬":"面酱","麵茶":"面茶","麵店":"面店","麵攤":"面摊","泡麵":"泡面","拉麵":"拉面","湯麵":"汤面","炒麵":"炒面","涼麵":"凉面","牛肉麵":"牛肉面","陽春麵":"阳春面","刀削麵":"刀削面","速食麵":"速食面","蕎麥麵":"荞麦面","烏龍麵":"乌龙面","一隻":"一只","兩隻":"两只","三隻":"三只","幾隻":"几只","每隻":"每只","數隻":"数只","船隻":"船只","隻身":"只身","隻字":"只字","隻眼":"只眼","形單影隻":"形单影只","一隻貓":"一只猫","一隻狗":"一只狗","一隻手":"一只手","一隻腳":"一只脚","一隻鳥":"一只鸟","一隻眼睛":"一只眼睛","頭髮":"头发","理髮":"理发","髮型":"发型","髮型師":"发型师","髮廊":"发廊","髮夾":"发夹","髮絲":"发丝","髮色":"发色","髮髻":"发髻","髮根":"发根","髮梢":"发梢","髮飾":"发饰","髮質":"发质","髮膠":"发胶","髮箍":"发箍","髮蠟":"发蜡","髮線":"发线","髮妻":"发妻","假髮":"假发","洗髮":"洗发","護髮":"护发","染髮":"染发","剪髮":"剪发","髮際":"发际","髮量":"发量","白髮":"白发","長髮":"长发","短髮":"短发","金髮":"金发","鬢髮":"鬓发","千鈞一髮":"千钧一发","這裡":"这里","那裡":"那里","哪裡":"哪里","心裡":"心里","家裡":"家里","手裡":"手里","嘴裡":"嘴里","眼裡":"眼里","夢裡":"梦里","夜裡":"夜里","懷裡":"怀里","口袋裡":"口袋里","骨子裡":"骨子里","暗地裡":"暗地里","裡面":"里面","裡頭":"里头","裡邊":"里边","裡外":"里外","裡層":"里层","話裡有話":"话里有话","臺灣":"台湾","臺北":"台北","臺中":"台中","臺南":"台南","臺東":"台东","臺幣":"台币","臺語":"台语","臺大":"台大","舞臺":"舞台","平臺":"平台","後臺":"后台","前臺":"前台","上臺":"上台","下臺":"下台","拆臺":"拆台","坍臺":"坍台","天文臺":"天文台","電視臺":"电视台","廣播電臺":"广播电台","氣象臺":"气象台","檯燈":"台灯","檯面":"台面","檯球":"台球","寫字檯":"写字台","梳妝檯":"梳妆台","颱風":"台风","颱風眼":"台风眼","什麼":"什么","怎麼":"怎么","這麼":"这么","那麼":"那么","多麼":"多么","為什麼":"为什么","甚麼":"什么","要麼":"要么","幹麼":"干么","什麼樣":"什么样","怎麼了":"怎么了","怎麼回事":"怎么回事","沒什麼":"没什么","什麼時候":"什么时候","復習":"复习","複習":"复习","複雜":"复杂","複數":"复数","複製":"复制","複印":"复印","複合":"复合","複查":"复查","複選":"复选","複眼":"复眼","複利":"复利","複寫":"复写","複方":"复方","復活":"复活","恢復":"恢复","復興":"复兴","復原":"复原","復仇":"复仇","報復":"报复","康復":"康复","重複":"重复","繁複":"繁复","反覆":"反复","反覆無常":"反复无常","答覆":"答复","回覆":"回复","批覆":"批复","覆蓋":"覆盖","覆核":"复核","顛覆":"颠覆","覆滅":"覆灭","覆轍":"覆辙","覆水難收":"覆水难收","關係":"关系","沒關係":"没关系","人際關係":"人际关系","聯繫":"联系","係數":"系数","繫念":"系念","繫鞋帶":"系鞋带","繫緊":"系紧","繫上":"系上","維繫":"维系","繫獄":"系狱","儘管":"尽管","儘量":"尽量","儘快":"尽快","儘早":"尽早","儘可能":"尽可能","盡量":"尽量","盡快":"尽快","盡力":"尽力","盡情":"尽情","盡興":"尽兴","盡興而歸":"尽兴而归","盡頭":"尽头","盡管":"尽管","盡職":"尽职","盡責":"尽责","盡心":"尽心","詳盡":"详尽","窮盡":"穷尽","無盡":"无尽","盡善盡美":"尽善尽美","製造":"制造","製作":"制作","製片":"制片","製定":"制定","製度":"制度","製藥":"制药","製衣":"制衣","製圖":"制图","製品":"制品","製版":"制版","製冷":"制冷","製鞋":"制鞋","特製":"特制","自製":"自制","精製":"精制","縫製":"缝制","燒製":"烧制","繪製":"绘制","研製":"研制","監製":"监制","編製":"编制","錄製":"录制","攝製":"摄制","印製":"印制","仿製":"仿制","佔領":"占领","佔據":"占据","佔有":"占有","佔用":"占用","佔地":"占地","佔卜":"占卜","獨佔":"独占","霸佔":"霸占","搶佔":"抢占","侵佔":"侵占","佔便宜":"占便宜","佔上風":"占上风","佔優勢":"占优势","佔多數":"占多数","佔位":"占位","佔滿":"占满","佔比":"占比","週末":"周末","週年":"周年","週刊":"周刊","週期":"周期","週報":"周报","週會":"周会","週記":"周记","週遭":"周遭","週轉":"周转","週歲":"周岁","週而復始":"周而复始","週遊":"周游","一週":"一周","兩週":"两周","每週":"每周","上週":"上周","下週":"下周","本週":"本周","佈置":"布置","佈局":"布局","佈告":"布告","佈景":"布景","佈防":"布防","佈滿":"布满","佈施":"布施","佈道":"布道","佈雷":"布雷","佈陣":"布阵","分佈":"分布","宣佈":"宣布","公佈":"公布","頒佈":"颁布","擺佈":"摆布","散佈":"散布","衝突":"冲突","衝擊":"冲击","衝擊力":"冲击力","衝動":"冲动","衝刺":"冲刺","衝鋒":"冲锋","衝破":"冲破","衝撞":"冲撞","衝浪":"冲浪","衝勁":"冲劲","沖洗":"冲洗","沖泡":"冲泡","沖涼":"冲凉","沖淡":"冲淡","沖刷":"冲刷","沖銷":"冲销","沖天":"冲天","緩衝":"缓冲","要衝":"要冲","採取":"采取","採用":"采用","採訪":"采访","採購":"采购","採納":"采纳","採集":"采集","採礦":"采矿","採光":"采光","採收":"采收","採摘":"采摘","採樣":"采样","採信":"采信","採買":"采买","開採":"开采","遊戲":"游戏","遊戲機":"游戏机","旅遊":"旅游","旅遊業":"旅游业","遊客":"游客","遊行":"游行","遊行示威":"游行示威","遊覽":"游览","遊玩":"游玩","遊樂":"游乐","遊泳":"游泳","遊艇":"游艇","遊民":"游民","遊牧":"游牧","遊說":"游说","遊蕩":"游荡","遊歷":"游历","遊園":"游园","遊藝":"游艺","遊手好閒":"游手好闲","遊山玩水":"游山玩水","導遊":"导游","矇騙":"蒙骗","矇蔽":"蒙蔽","矇混":"蒙混","矇矓":"蒙眬","濛濛":"蒙蒙","灰濛濛":"灰蒙蒙","迷濛":"迷蒙","心臟":"心脏","心臟病":"心脏病","內臟":"内脏","臟器":"脏器","臟腑":"脏腑","骯髒":"肮脏","髒話":"脏话","髒亂":"脏乱","髒污":"脏污","弄髒":"弄脏","髒兮兮":"脏兮兮","髒東西":"脏东西","計劃":"计划","計畫":"计划","規劃":"规划","策劃":"策划","劃分":"划分","劃時代":"划时代","劃定":"划定","劃清":"划清","劃破":"划破","刻劃":"刻画","謀劃":"谋划","比劃":"比划","劃一":"划一","劃撥":"划拨","劃算":"划算","劃船":"划船","劃槳":"划桨","稻穀":"稻谷","穀物":"谷物","穀倉":"谷仓","穀類":"谷类","穀雨":"谷雨","穀子":"谷子","穀粒":"谷粒","五穀":"五谷","五穀雜糧":"五谷杂粮","曬穀":"晒谷","放鬆":"放松","輕鬆":"轻松","鬆懈":"松懈","鬆軟":"松软","鬆散":"松散","鬆綁":"松绑","鬆餅":"松饼","鬆弛":"松弛","鬆脫":"松脱","鬆開":"松开","蓬鬆":"蓬松","寬鬆":"宽松","鬆了口氣":"松了口气","戰鬥":"战斗","戰鬥機":"战斗机","鬥爭":"斗争","鬥志":"斗志","奮鬥":"奋斗","鬥毆":"斗殴","決鬥":"决斗","格鬥":"格斗","鬥嘴":"斗嘴","鬥牛":"斗牛","鬥士":"斗士","鬥雞":"斗鸡","明爭暗鬥":"明争暗斗","勾心鬥角":"勾心斗角","雲南":"云南","雲南省":"云南省","白雲":"白云","雲朵":"云朵","雲彩":"云彩","雲霧":"云雾","雲層":"云层","風雲":"风云","星雲":"星云","烏雲":"乌云","雲端":"云端","雲霄":"云霄","雲海":"云海","煙消雲散":"烟消云散","雜誌":"杂志","標誌":"标志","日誌":"日志","誌慶":"志庆","誌哀":"志哀","墓誌銘":"墓志铭","地方誌":"地方志","捲入":"卷入","席捲":"席卷","捲土重來":"卷土重来","捲曲":"卷曲","捲髮":"卷发","龍捲風":"龙卷风","捲簾":"卷帘","捲心菜":"卷心菜","捲款":"卷款","捲菸":"卷烟","捲紙":"卷纸","捲軸":"卷轴","手錶":"手表","錶帶":"表带","錶殼":"表壳","錶店":"表店","錶針":"表针","錶鏈":"表链","電錶":"电表","水錶":"水表","溫度錶":"温度表","捨得":"舍得","捨不得":"舍不得","捨棄":"舍弃","捨身":"舍身","捨命":"舍命","捨去":"舍去","取捨":"取舍","割捨":"割舍","施捨":"施舍","捨己為人":"舍己为人","難捨難分":"难舍难分","鍥而不捨":"锲而不舍","鬍子":"胡子","鬍鬚":"胡须","鬍渣":"胡渣","刮鬍子":"刮胡子","絡腮鬍":"络腮胡","衚衕":"胡同","甦醒":"苏醒","嚐試":"尝试","嚐鮮":"尝鲜","嚐到":"尝到","嚐遍":"尝遍","品嚐":"品尝","獲得":"获得","獲勝":"获胜","獲獎":"获奖","獲取":"获取","獲救":"获救","獲悉":"获悉","獲利":"获利","獲准":"获准","獲釋":"获释","獲選":"获选","收穫":"收获","獵獲":"猎获","查獲":"查获","破獲":"破获","俘獲":"俘获","不勞而獲":"不劳而获","於是":"于是","由於":"由于","關於":"关于","對於":"对于","至於":"至于","終於":"终于","屬於":"属于","等於":"等于","位於":"位于","善於":"善于","限於":"限于","基於":"基于","鑒於":"鉴于","在於":"在于","用於":"用于","相當於":"相当于","致力於":"致力于","不亞於":"不亚于","青出於藍":"青出于蓝","甘於":"甘于","忙於":"忙于","急於":"急于","樂於":"乐于","勇於":"勇于","便於":"便于","趨於":"趋于","瀕於":"濒于","因為":"因为","認為":"认为","作為":"作为","成為":"成为","行為":"行为","為了":"为了","人為":"人为","以為":"以为","無為":"无为","為難":"为难","為止":"为止","為數":"为数","較為":"较为","頗為":"颇为","極為":"极为","尤為":"尤为","自以為是":"自以为是","事在人為":"事在人为","不以為然":"不以为然","與會":"与会","與否":"与否","與其":"与其","參與":"参与","給與":"给与","與日俱增":"与日俱增","與眾不同":"与众不同","與此同時":"与此同时","幾乎":"几乎","幾個":"几个","幾個人":"几个人","幾何":"几何","幾時":"几时","幾多":"几多","幾許":"几许","幾率":"几率","十幾個":"十几个","寥寥無幾":"寥寥无几","纔是":"才是","纔能":"才能","纔知道":"才知道","剛纔":"刚才","摺疊":"折叠","摺紙":"折纸","摺頁":"折页","摺扇":"折扇","轉摺":"转折","痲痹":"麻痹","痲疹":"麻疹","痲瘋":"麻风","痲醉":"麻醉","痲木":"麻木","痲煩":"麻烦","傢俱":"家具","傢具":"家具","傢伙":"家伙","佇立":"伫立","佇足":"伫足","山峯":"山峰","高峯":"高峰","頂峯":"顶峰","峯會":"峰会","羣眾":"群众","社羣":"社群","族羣":"族群","羣島":"群岛","一羣":"一群","陞遷":"升迁","高陞":"高升","徵求":"征求","徵稅":"征税","徵兵":"征兵","特徵":"特征","象徵":"象征","徵兆":"征兆","徵候":"征候","徵集":"征集","徵詢":"征询","徵文":"征文","徵收":"征收","徵用":"征用","徵召":"征召","徵信":"征信","徵狀":"症状","徵才":"征才","應徵":"应征","誇張":"夸张","誇獎":"夸奖","誇大":"夸大","誇耀":"夸耀","誇口":"夸口","誇讚":"夸赞","自誇":"自夸","浮誇":"浮夸","釐清":"厘清","公釐":"公厘","釐米":"厘米","釐定":"厘定","憂鬱":"忧郁","鬱悶":"郁闷","鬱金香":"郁金香","鬱鬱蔥蔥":"郁郁葱葱","鬱鬱寡歡":"郁郁寡欢","抑鬱":"抑郁","濃鬱":"浓郁","鬱積":"郁积","鍊鋼":"炼钢","鍛鍊":"锻炼","提鍊":"提炼","鍊金":"炼金","精鍊":"精炼","冶鍊":"冶炼","鍊鐵":"炼铁","奇蹟":"奇迹","事蹟":"事迹","遺蹟":"遗迹","古蹟":"古迹","名勝古蹟":"名胜古迹","蹤跡":"踪迹","絕跡":"绝迹","血跡":"血迹","痕跡":"痕迹","筆跡":"笔迹","墨跡":"墨迹","形跡":"形迹","劣跡":"劣迹","跡象":"迹象","銷聲匿跡":"销声匿迹","鹹味":"咸味","鹹菜":"咸菜","鹹魚":"咸鱼","鹹蛋":"咸蛋","鹹水":"咸水","太鹹":"太咸","嘴脣":"嘴唇","脣膏":"唇膏","脣舌":"唇舌","脣齒相依":"唇齿相依","罣礙":"挂碍","罣念":"挂念","汙染":"污染","汙水":"污水","汙垢":"污垢","汙辱":"污辱","汙點":"污点","汙穢":"污秽","貪汙":"贪污","洩漏":"泄漏","洩露":"泄露","洩氣":"泄气","洩洪":"泄洪","洩密":"泄密","發洩":"发泄","潮溼":"潮湿","溼度":"湿度","溼潤":"湿润","溼氣":"湿气","溼疹":"湿疹","溼透":"湿透","溼地":"湿地","準備":"准备","標準":"标准","準確":"准确","準確度":"准确度","準時":"准时","準則":"准则","瞄準":"瞄准","水準":"水准","瀰漫":"弥漫","災難":"灾难","災害":"灾害","火災":"火灾","天災":"天灾","災區":"灾区","災情":"灾情","災民":"灾民","燉湯":"炖汤","燉肉":"炖肉","燉煮":"炖煮","獃子":"呆子","發獃":"发呆","獃滯":"呆滞","治癒":"治愈","痊癒":"痊愈","癒合":"愈合","不藥而癒":"不药而愈","皰疹":"疱疹","水皰":"水疱","睏倦":"困倦","睏意":"困意","睪丸":"睾丸","睪固酮":"睾固酮","砲彈":"炮弹","砲火":"炮火","砲兵":"炮兵","砲台":"炮台","大砲":"大炮","禮砲":"礼炮","硃砂":"朱砂","硃紅":"朱红","祕密":"秘密","神祕":"神秘","神祕感":"神秘感","祕書":"秘书","奧祕":"奥秘","祕訣":"秘诀","牠們":"它们","牠的":"它的","竹筍":"竹笋","筍子":"笋子","春筍":"春笋","筍乾":"笋干","籐條":"藤条","籐椅":"藤椅","籐蔓":"藤蔓","化粧":"化妆","化粧品":"化妆品","粧扮":"装扮","包紮":"包扎","紮營":"扎营","紮實":"扎实","紮根":"扎根","掙紮":"挣扎","結紮":"结扎","駐紮":"驻扎","綑綁":"捆绑","綑紮":"捆扎","罈子":"坛子","酒罈":"酒坛","醃漬":"腌渍","醃製":"腌制","醃肉":"腌肉","醃菜":"腌菜","鍼灸":"针灸","閤家":"合家","雋永":"隽永","黴菌":"霉菌","發黴":"发霉","黴味":"霉味","鞦韆":"秋千","飢餓":"饥饿","飢渴":"饥渴","饑荒":"饥荒","饑餓":"饥饿","饑饉":"饥馑","餵食":"喂食","餵養":"喂养","餵奶":"喂奶","一齣":"一出","一齣戲":"一出戏","這齣":"这出","那齣":"那出","幾齣":"几出","囉唆":"啰唆","囉嗦":"啰嗦","囉哩囉嗦":"啰里啰嗦","嘍囉":"喽啰","呼籲":"呼吁","讚美":"赞美","讚賞":"赞赏","讚揚":"赞扬","讚同":"赞同","讚嘆":"赞叹","讚許":"赞许","讚譽":"赞誉","稱讚":"称赞","箇中":"个中","箇舊":"个旧","蔥花":"葱花","洋蔥":"洋葱","青蔥":"青葱","蔥頭":"葱头","蔥油餅":"葱油饼","剋星":"克星","剋制":"克制","剋扣":"克扣","噁心":"恶心","掛號":"挂号","掛念":"挂念","掛心":"挂心","掛牌":"挂牌","掛彩":"挂彩","掛鉤":"挂钩","懸掛":"悬挂","唸書":"念书","唸經":"念经","唸唸有詞":"念念有词","唸佛":"念佛","默唸":"默念","唸叨":"念叨","慾望":"欲望","食慾":"食欲","性慾":"性欲","情慾":"情欲","慾火":"欲火","縱慾":"纵欲","重疊":"重叠","折疊":"折叠","堆疊":"堆叠","疊字":"叠字","疊加":"叠加","層層疊疊":"层层叠叠","疊羅漢":"叠罗汉","雨傘":"雨伞","撐傘":"撑伞","降落傘":"降落伞","保護傘":"保护伞","癥結":"症结","搔癢":"搔痒","癢癢":"痒痒","手癢":"手痒","發癢":"发痒","曬太陽":"晒太阳","曝曬":"曝晒","曬黑":"晒黑","晾曬":"晾晒","酒甕":"酒瓮","甕中捉鱉":"瓮中捉鳖","灰燼":"灰烬","化為灰燼":"化为灰烬","腹瀉":"腹泻","傾瀉":"倾泻","瀉藥":"泻药","燦爛":"灿烂","燦笑":"灿笑","燴飯":"烩饭","燻肉":"熏肉","燻黑":"熏黑","燻陶":"熏陶","閃爍":"闪烁","閃爍其詞":"闪烁其词","犧牲":"牺牲","獰笑":"狞笑","猙獰":"狰狞","癱瘓":"瘫痪","瞭解":"了解","明瞭":"明了","一目瞭然":"一目了然","硯台":"砚台","筆硯":"笔砚","妨礙":"妨碍","障礙":"障碍","阻礙":"阻碍","礙眼":"碍眼","俸祿":"俸禄","祈禱":"祈祷","禱告":"祷告","鳥窩":"鸟窝","酒窩":"酒窝","窩藏":"窝藏","窩囊":"窝囊","竈神":"灶神","竈台":"灶台","粵語":"粤语","粵菜":"粤菜","翹課":"翘课","翹起":"翘起","翹楚":"翘楚","翹首":"翘首","聳肩":"耸肩","高聳":"高耸","聳動":"耸动","皮膚":"皮肤","膚色":"肤色","肌膚":"肌肤","膚淺":"肤浅","臍帶":"脐带","肚臍":"肚脐","機艙":"机舱","船艙":"船舱","頭等艙":"头等舱","生薑":"生姜","薑湯":"姜汤","老薑":"老姜","蘆葦":"芦苇","葫蘆":"葫芦","蘆薈":"芦荟","蘇醒":"苏醒","蘇打":"苏打","江蘇":"江苏","蘇州":"苏州","蘊含":"蕴含","底蘊":"底蕴","蘊藏":"蕴藏","蟄伏":"蛰伏","驚蟄":"惊蛰","蠟燭":"蜡烛","蠟筆":"蜡笔","蠟像":"蜡像","打蠟":"打蜡","蒼蠅":"苍蝇","蠅頭小利":"蝇头小利","蠍子":"蝎子","污衊":"污蔑","誣衊":"诬蔑","襪子":"袜子","絲襪":"丝袜","短襪":"短袜","覈實":"核实","審覈":"审核","覈准":"核准","覈對":"核对","友誼":"友谊","情誼":"情谊","原諒":"原谅","諒解":"谅解","謎語":"谜语","猜謎":"猜谜","謎團":"谜团","譁然":"哗然","喧譁":"喧哗","豔麗":"艳丽","鮮豔":"鲜艳","豔陽":"艳阳","贍養":"赡养","身軀":"身躯","軀體":"躯体","軀幹":"躯干","輟學":"辍学","沒轍":"没辙","釀酒":"酿酒","釀造":"酿造","醞釀":"酝酿","鈔票":"钞票","魚鉤":"鱼钩","手銬":"手铐","電鋸":"电锯","鋸子":"锯子","鐵錘":"铁锤","錘子":"锤子","關鍵":"关键","鍵盤":"键盘","封鎖":"封锁","鎖定":"锁定","枷鎖":"枷锁","英鎊":"英镑","鑰匙":"钥匙","鑽石":"钻石","鑽研":"钻研","鑽孔":"钻孔","韁繩":"缰绳","頹廢":"颓废","頹喪":"颓丧","顛倒":"颠倒","顛簸":"颠簸","颶風":"飓风","飆車":"飙车","飆升":"飙升","狂飆":"狂飙","氣餒":"气馁","回饋":"回馈","饋贈":"馈赠","奔馳":"奔驰","馳名":"驰名","馳騁":"驰骋","駱駝":"骆驼","駝背":"驼背","駭人":"骇人","驚駭":"惊骇","騷擾":"骚扰","騷動":"骚动","牢騷":"牢骚","驅逐":"驱逐","驅動":"驱动","驅趕":"驱赶","驢子":"驴子","毛驢":"毛驴","夢魘":"梦魇","鮑魚":"鲍鱼","鯨魚":"鲸鱼","鴻運":"鸿运","鴻溝":"鸿沟","天鵝":"天鹅","老鷹":"老鹰","燕麥":"燕麦","麥克風":"麦克风","小麥":"小麦","麥片":"麦片","黃色":"黄色","蛋黃":"蛋黄","黃昏":"黄昏","黨員":"党员","政黨":"政党","齜牙咧嘴":"龇牙咧嘴","齷齪":"龌龊","烏龜":"乌龟","龜裂":"龟裂","龍蝦":"龙虾","龍頭":"龙头","沙龍":"沙龙","土著":"土著","合著":"合著","新著":"新著","舊著":"旧著","彰明較著":"彰明较著","論著集":"论著集","乾縣":"乾县","乾安":"乾安","彷彿":"仿佛","彷彷彿彿":"仿仿佛佛","著书":"著书","著书立说":"著书立说","著录":"著录","著称":"著称","译著":"译著","论著":"论著","专著":"专著","遗著":"遗著","编著":"编著","显著":"显著","见微知著":"见微知著","知微见著":"知微见著","乾清宫":"乾清宫","蕴藉":"蕴藉","风流蕴藉":"风流蕴藉","旧著":"旧著","彰明较著":"彰明较著","论著集":"论著集","乾县":"乾县"}}</script>
+    <!-- TRAD2SIMP-DATA:END -->
+
+    <script src="app.js" defer></script>  </body>
+</html>

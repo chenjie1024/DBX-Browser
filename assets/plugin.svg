@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="DBX Browser">
+  <!-- 浏览器窗口：一个圆点 + 三条内容线。
+       刻意只留一个圆点、线条加粗——插件图标在侧栏里只有十几像素，
+       多画一个点就会糊成一片（改之前用 16px 实测对比过）。 -->
+  <defs>
+    <linearGradient id="dbxBrowserIcon" x1="10" y1="8" x2="54" y2="56" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8b5cf6"/>
+      <stop offset="1" stop-color="#6d5dfc"/>
+    </linearGradient>
+  </defs>
+  <rect x="5" y="11" width="54" height="42" rx="10" fill="url(#dbxBrowserIcon)"/>
+  <path d="M5 22.5h54" stroke="#fff" stroke-opacity=".4" stroke-width="2.4"/>
+  <circle cx="13.8" cy="16.8" r="3.1" fill="#fff"/>
+  <g stroke="#fff" stroke-width="3.8" stroke-linecap="round">
+    <path d="M14 32h21"/>
+    <path d="M14 41h36"/>
+    <path d="M14 49.5h24"/>
+  </g>
+</svg>

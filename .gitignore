@@ -1,0 +1,19 @@
+/dist/
+/.dbx-dev/
+/.build-*/
+/.stage-*/
+.dbx-repository-signing-key.env
+.DS_Store
+*.log
+
+# Rust 编译产物（几万个文件，绝不能进仓库）
+/backend/target/
+target/
+**/*.rs.bk
+
+# Node / 前端依赖
+node_modules/
+
+# 本地临时文件
+*.tmp
+*.bak

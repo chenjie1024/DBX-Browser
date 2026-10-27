@@ -1,0 +1,99 @@
+{
+  "$schema": "https://raw.githubusercontent.com/t8y2/dbx/main/plugins/manifest.schema.json",
+  "manifest_version": 1,
+  "id": "com.dbx.webview",
+  "name": "Browser",
+  "version": "0.7.6",
+  "publisher": "chen3",
+  "description": "在 DBX 内打开任意网站：抓取正文、按站点规则重排；小红书等前端渲染站点可直接在插件内实时浏览、登录和评论。",
+  "icon": "assets/plugin.svg",
+  "source": "https://github.com/chenjie1024/DBX-Browser",
+  "homepage": "https://github.com/chenjie1024/DBX-Browser",
+  "engines": {
+    "dbx": ">=0.6.0",
+    "host_api": "1"
+  },
+  "permissions": [
+    "host.storage",
+    "host.events"
+  ],
+  "entrypoints": {
+    "backend": {
+      "executable": "bin/dbx-plugin-webview"
+    },
+    "ui": {
+      "root": "ui",
+      "entry": "ui/index.html"
+    }
+  },
+  "contributions": [
+    {
+      "type": "workbench",
+      "id": "com.dbx.webview.reader",
+      "label": "Browser",
+      "description": "输入任意网址，抓取正文并按站点规则渲染成干净的阅读视图。",
+      "icon": "assets/plugin.svg"
+    },
+    {
+      "type": "command",
+      "id": "com.dbx.webview.open",
+      "label": "Browser",
+      "description": "在新的标签页打开 Browser 工作台。",
+      "icon": "assets/plugin.svg",
+      "action": {
+        "type": "open-workbench",
+        "workbench": "com.dbx.webview.reader",
+        "presentation": "tab",
+        "reuse": "singleton"
+      }
+    },
+    {
+      "type": "menus",
+      "id": "com.dbx.webview.menus",
+      "items": [
+        {
+          "location": "commandPalette",
+          "command": "com.dbx.webview.open",
+          "group": "navigation",
+          "order": 40
+        },
+        {
+          "location": "appToolbar",
+          "command": "com.dbx.webview.open",
+          "group": "navigation",
+          "order": 40,
+          "default_visible": true
+        }
+      ]
+    }  ],
+  "localizations": {
+    "zh-CN": {
+      "name": "Browser",
+      "description": "在 DBX 内打开任意网站：抓取正文、按站点规则重排；小红书等前端渲染站点可直接在插件内实时浏览、登录和评论。",
+      "contributions": {
+        "com.dbx.webview.reader": {
+          "label": "Browser",
+          "description": "输入任意网址，抓取正文并按站点规则渲染成干净的阅读视图。"
+        },
+        "com.dbx.webview.open": {
+          "label": "Browser",
+          "description": "在新的标签页打开 Browser 工作台。"
+        }
+      }
+    },
+    "en": {
+      "name": "Browser",
+      "description": "Open any website inside DBX: fetch and restyle pages, and browse/login/comment on JavaScript-rendered sites like Xiaohongshu inside the plugin.",
+      "contributions": {
+        "com.dbx.webview.reader": {
+          "label": "Browser",
+          "description": "Enter any URL to fetch and render it as a clean reading view."
+        },
+        "com.dbx.webview.open": {
+          "label": "Browser",
+          "description": "Open the Browser workbench in a new tab."
+        }
+      }
+    }
+  }
+}

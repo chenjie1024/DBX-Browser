@@ -1,0 +1,44 @@
+[package]
+name = "dbx-plugin-webview"
+version = "0.7.6"
+edition = "2021"
+license = "Apache-2.0"
+
+[workspace]
+members = ["engine"]
+
+[dependencies]
+dbx-plugin-sdk = "0.1.0"
+dbx-webview-engine = { path = "engine" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+url = "2"
+
+[target.'cfg(windows)'.dependencies]
+webview2-com = "0.38.2"
+windows = { version = "0.61.3", features = [
+  "Win32_Foundation",
+  "Win32_Globalization",
+  "Win32_Graphics_Gdi",
+  "Win32_System_Com",
+  "Win32_System_LibraryLoader",
+  "Win32_System_Ole",
+  "Win32_System_Threading",
+  "Win32_System_Variant",
+  "Win32_System_WinRT",
+  "Win32_UI_HiDpi",
+  "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_UI_WindowsAndMessaging",
+] }
+
+# `dbx-plugin dev` / `dbx-plugin package` inject this patch themselves (the SDK
+# ships inside the installed @dbx-app/plugin-cli npm package and is not on
+# crates.io). It is spelled out here as well so that a plain `cargo build` in
+# this directory works without going through the CLI.
+# Keep plugin binaries close to the host app's size: default release settings
+# leave ~20MB of symbols and unoptimized generic code in an OpenDAL-sized backend.
+# panic stays "unwind" so the sidecar protocol can report panics as errors.
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
