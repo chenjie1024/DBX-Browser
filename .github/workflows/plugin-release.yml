@@ -21,3 +21,10 @@ jobs:
       plugin-cli-version: 0.1.9
       # 本项目是 Rust sidecar：不装工具链会直接在 package 步骤失败。
       rust-toolchain: stable
+      # 只构建 Windows：
+      #   * sidecar 依赖 WebView2 + CDP，macOS/Linux 上根本无法运行；
+      #   * 默认矩阵会额外产出 darwin/linux 包，商店会把它们当成可用版本发出去，
+      #     用户装上就是坏的。
+      # 需要多平台时再往这个 JSON 里加条目。
+      build-matrix: >-
+        {"include":[{"runner":"windows-2022","target":"windows-x64"}]}
