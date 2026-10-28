@@ -1,6 +1,6 @@
 {
   "name": "Browser",
-  "description": "在 DBX 内打开任意网站：抓取正文并按站点规则重排；小红书、抖音等前端渲染站点可直接在插件内实时浏览、登录、评论。",
+  "description": "在 DBX 内直接看网页：正文抽取重排成阅读视图，小红书、抖音等前端渲染站点还能在插件里实时登录互动，并可离线阅读本地 txt 小说。",
   "icon": "assets/plugin.svg",
   "tags": ["web", "reader", "browser", "novel", "scraping"],
   "permissions": ["host.storage", "host.events"],

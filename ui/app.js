@@ -6086,17 +6086,34 @@
     if (el.statusState) setText(el.statusState, t("liveBadge"));
   }
 
-  /** 当前绘制面在屏幕上的大小（乘设备像素比）——采集该用多大就按它算。 */
+  /**
+   * 采集该用多大：**按"画面实际占据的设备像素"算，并保持页面宽高比**。
+   *
+   * 之前这里直接用面板 rect 的高宽（`rect.height` 当 maxHeight），踩了一个坑：
+   * 页面视口是 1280×900（比例 1.42），面板是 1264×681（比例 1.86），
+   * screencast 会保持视口比例缩放，于是高度先撞上限 → 只采到 968×681，
+   * 再在面板里放大 1.3 倍显示 → 文字发虚。
+   *
+   * 正确做法：先算出画面在面板里按 contain 实际占多少 CSS 像素，乘 DPR 得到
+   * 需要的设备像素，再按页面比例反推 maxHeight。这样采集分辨率 ≥ 显示分辨率，
+   * 不会被放大。
+   */
   function liveCaptureSize() {
     var surface = el.liveCanvas && !el.liveCanvas.hidden ? el.liveCanvas : el.liveFrame;
     if (!surface) return null;
     var rect = surface.getBoundingClientRect();
     if (!rect.width || !rect.height) return null;
     var dpr = window.devicePixelRatio || 1;
-    return {
-      width: Math.round(clamp(rect.width * dpr, 480, 1280)),
-      height: Math.round(clamp(rect.height * dpr, 360, 900))
-    };
+    var viewW = liveState.width || 1280;
+    var viewH = liveState.height || 900;
+    var ratio = viewH / viewW;
+    // contain：画面在面板内实际显示尺寸
+    var shownW = Math.min(rect.width, rect.height / ratio);
+    // 采集宽度：显示宽度 × DPR，限制在 [640, 1280]
+    var width = Math.round(clamp(shownW * dpr, 640, 1280));
+    // 高度按页面比例反推（不要用面板高度，否则会把画面缩小再放大）
+    var height = Math.round(clamp(width * ratio, 360, 900));
+    return { width: width, height: height };
   }
 
   var liveResizeTimer = 0;
@@ -6497,7 +6514,12 @@
           canvas.height = bitmap.height;
         }
         var ctx = canvas.getContext("2d");
-        if (ctx) ctx.drawImage(bitmap, 0, 0);
+        if (ctx) {
+          // 缩放绘制时用高质量插值，避免文字发虚。
+          ctx.imageSmoothingEnabled = true;
+          if ("imageSmoothingQuality" in ctx) ctx.imageSmoothingQuality = "high";
+          ctx.drawImage(bitmap, 0, 0);
+        }
         liveState.framesDrawn = (liveState.framesDrawn || 0) + 1;
         var stats = window.__dbxLiveStats;
         if (stats) stats.drawn += 1;

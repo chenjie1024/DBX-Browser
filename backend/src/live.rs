@@ -50,8 +50,11 @@ const START_TIMEOUT: Duration = Duration::from_secs(20);
 /// 因为 60 个事件/秒把事件循环压住，单帧解码从 13ms 涨到 27ms。所以既不是越慢越省，
 /// 也不是越快越好——16ms 是这台机器的甜点。
 const FRAME_INTERVAL: Duration = Duration::from_millis(16);
-/// JPEG 质量。文本页面 55 与 60 肉眼几乎无差，但体积小一圈、编码更快。
-const SCREENCAST_QUALITY: i32 = 55;
+/// JPEG 质量。
+///
+/// 曾经为了省带宽压到 55，代价是文字边缘发虚——实时页面主要用来看文字，
+/// 这个取舍不划算。80 与 55 的字节数差别在 40KB/帧以内，解码耗时几乎不变。
+const SCREENCAST_QUALITY: i32 = 80;
 /// 隔帧编码。60fps 的动画页没必要逐帧编码——UI 侧解码约 10–20ms/帧，
 /// 多出来的帧只会被丢弃。
 const SCREENCAST_EVERY_NTH_FRAME: i32 = 1;
