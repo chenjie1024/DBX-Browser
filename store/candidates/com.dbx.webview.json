@@ -2,10 +2,10 @@
     "schemaVersion":  1,
     "id":  "com.dbx.webview",
     "publisher":  "xingxi",
-    "version":  "0.7.8",
+    "version":  "0.7.10",
     "name":  "Browser",
     "description":  "一个工作台解决三件事：干净读文章、实时逛小红书抖音、离线看小说——全在 DBX 内完成。",
-    "icon":  "https://raw.githubusercontent.com/chenjie1024/DBX-Browser/v0.7.8/assets/plugin.svg",
+    "icon":  "https://raw.githubusercontent.com/chenjie1024/DBX-Browser/v0.7.10/assets/plugin.svg",
     "tags":  [
                  "web",
                  "reader",
@@ -17,7 +17,7 @@
                         "host.events",
                         "host.binary"
                     ],
-    "source":  "https://github.com/chenjie1024/DBX-Browser/tree/v0.7.8",
+    "source":  "https://github.com/chenjie1024/DBX-Browser/tree/v0.7.10",
     "homepage":  "https://github.com/chenjie1024/DBX-Browser",
     "license":  "MIT",
     "releaseNotes":  "首个公开版本：网页正文抽取、站点预设（可自定义增删）、实时页面渲染与鼠标键盘转发、本地 txt 小说阅读。",
@@ -30,9 +30,9 @@
     "targets":  [
                     {
                         "target":  "windows-x64",
-                        "url":  "https://github.com/chenjie1024/DBX-Browser/releases/download/v0.7.8/com.dbx.webview-0.7.8-windows-x64.dbxp",
-                        "sha256":  "a97441b8dbe353ae3e17f1198f3fa225d6d1a7aed95e69226082372905ea0fe6",
-                        "size":  2783404
+                        "url":  "https://github.com/chenjie1024/DBX-Browser/releases/download/v0.7.10/com.dbx.webview-0.7.10-windows-x64.dbxp",
+                        "sha256":  "1cf373ed32b6b0d43091496b2301242bf30369da417073114cdc118263345d0b",
+                        "size":  2794270
                     }
                 ]
 }
