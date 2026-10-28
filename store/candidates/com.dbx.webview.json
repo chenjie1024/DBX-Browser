@@ -4,7 +4,7 @@
     "publisher":  "xingxi",
     "version":  "0.7.8",
     "name":  "Browser",
-    "description":  "在 DBX 内直接看网页：正文抽取重排成阅读视图，小红书、抖音等前端渲染站点还能在插件里实时登录互动，并可离线阅读本地 txt 小说。",
+    "description":  "一个工作台解决三件事：干净读文章、实时逛小红书抖音、离线看小说——全在 DBX 内完成。",
     "icon":  "https://raw.githubusercontent.com/chenjie1024/DBX-Browser/v0.7.8/assets/plugin.svg",
     "tags":  [
                  "web",
@@ -14,7 +14,8 @@
              ],
     "permissions":  [
                         "host.storage",
-                        "host.events"
+                        "host.events",
+                        "host.binary"
                     ],
     "source":  "https://github.com/chenjie1024/DBX-Browser/tree/v0.7.8",
     "homepage":  "https://github.com/chenjie1024/DBX-Browser",
@@ -23,7 +24,7 @@
     "localizations":  {
                           "zh-CN":  {
                                         "name":  "Browser",
-                                        "description":  "在 DBX 内直接看网页：正文抽取重排成阅读视图，小红书、抖音等前端渲染站点还能在插件里实时登录互动，并可离线阅读本地 txt 小说。"
+                                        "description":  "一个工作台解决三件事：干净读文章、实时逛小红书抖音、离线看小说——全在 DBX 内完成。"
                                     }
                       },
     "targets":  [

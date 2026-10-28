@@ -267,7 +267,7 @@ dependencies = [
 
 [[package]]
 name = "dbx-plugin-webview"
-version = "0.7.8"
+version = "0.7.10"
 dependencies = [
  "dbx-plugin-sdk",
  "dbx-webview-engine",
@@ -280,7 +280,7 @@ dependencies = [
 
 [[package]]
 name = "dbx-webview-engine"
-version = "0.7.8"
+version = "0.7.10"
 dependencies = [
  "encoding_rs",
  "lol_html",

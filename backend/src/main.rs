@@ -7,7 +7,8 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use dbx_plugin_sdk::{
-    PluginEmitter, PluginError, PluginHandler, PluginMetadata, PluginServer, RequestContext,
+    PluginEmitter, PluginError, PluginHandler, PluginMetadata, PluginServer, PluginTransport,
+    RequestContext,
 };
 use engine::cleaner::{clean, CleanOptions, CleanedPage, Engine, RenderMode};
 use engine::{history, net, site};
@@ -30,7 +31,11 @@ fn main() -> std::io::Result<()> {
     let metadata = PluginMetadata::new("com.dbx.webview", env!("CARGO_PKG_VERSION"))
         .with_capability("workbench")
         .with_capability("events");
-    PluginServer::new(metadata, Plugin::new()).serve()
+    PluginServer::new(metadata, Plugin::new())
+        // 实时画面走二进制通道（manifest 里声明 host.binary + stdio-framed）：
+        // 每帧原始 JPEG，不再经过 base64 与 JSON。
+        .transport(PluginTransport::Framed)
+        .serve()
 }
 
 struct Plugin {
@@ -323,15 +328,29 @@ impl PluginHandler for Plugin {
             #[cfg(windows)]
             "webview/liveInput" => self.live_input(&params),
             #[cfg(windows)]
+            "webview/liveQuality" => {
+                // 滚动时降到 60 换帧率，停手恢复 85 换清晰度。
+                let quality = params
+                    .get("quality")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(80) as i32;
+                self.live_command(live::Command::Quality(quality))
+            }
+            #[cfg(windows)]
             "webview/liveResize" => {
                 let width = params.get("width").and_then(Value::as_i64).unwrap_or(0);
                 let height = params.get("height").and_then(Value::as_i64).unwrap_or(0);
                 if width <= 0 || height <= 0 {
                     return Err(PluginError::new(-32602, "实时页面尺寸不合法"));
                 }
-                self.live_command(live::Command::Resize {
+                let scale = params
+                    .get("dpr")
+                    .and_then(Value::as_f64)
+                    .unwrap_or(1.0);
+                self.live_command(live::Command::Viewport {
                     width: width as i32,
                     height: height as i32,
+                    scale,
                 })
             }
             #[cfg(windows)]
@@ -435,14 +454,20 @@ impl Plugin {
         let session = guard
             .as_ref()
             .ok_or_else(|| PluginError::new(-32000, "实时页面启动失败"))?;
-        // UI 会带上面板的显示尺寸；采集按它来，避免解码一堆显示不出来的像素。
+        // UI 会带上视口尺寸（CSS 像素）与设备像素比：页面按这个尺寸排版、
+        // 按 DPR 栅格化，采集才有足够的物理像素，不会放大发虚。
         if let (Some(width), Some(height)) = (
-            params.get("captureWidth").and_then(Value::as_i64),
-            params.get("captureHeight").and_then(Value::as_i64),
+            params.get("viewportWidth").and_then(Value::as_i64),
+            params.get("viewportHeight").and_then(Value::as_i64),
         ) {
-            let _ = session.send(live::Command::Resize {
+            let scale = params
+                .get("deviceScaleFactor")
+                .and_then(Value::as_f64)
+                .unwrap_or(1.0);
+            let _ = session.send(live::Command::Viewport {
                 width: width as i32,
                 height: height as i32,
+                scale,
             });
         }
         session

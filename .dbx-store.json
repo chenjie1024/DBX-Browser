@@ -1,11 +1,21 @@
 {
-  "name": "Browser",
-  "description": "在 DBX 内直接看网页：正文抽取重排成阅读视图，小红书、抖音等前端渲染站点还能在插件里实时登录互动，并可离线阅读本地 txt 小说。",
-  "icon": "assets/plugin.svg",
-  "tags": ["web", "reader", "browser", "novel", "scraping"],
-  "permissions": ["host.storage", "host.events"],
-  "source": "https://github.com/chenjie1024/DBX-Browser",
-  "homepage": "https://github.com/chenjie1024/DBX-Browser",
-  "license": "MIT",
-  "releaseNotes": "首个公开版本：网页正文抽取、站点预设（可自定义增删）、实时页面渲染与鼠标键盘转发、本地 txt 小说阅读。"
+    "name":  "Browser",
+    "description":  "一个工作台解决三件事：干净读文章、实时逛小红书抖音、离线看小说——全在 DBX 内完成。",
+    "icon":  "assets/plugin.svg",
+    "tags":  [
+                 "web",
+                 "reader",
+                 "browser",
+                 "novel",
+                 "scraping"
+             ],
+    "permissions":  [
+                        "host.storage",
+                        "host.events",
+                        "host.binary"
+                    ],
+    "source":  "https://github.com/chenjie1024/DBX-Browser",
+    "homepage":  "https://github.com/chenjie1024/DBX-Browser",
+    "license":  "MIT",
+    "releaseNotes":  "首个公开版本：网页正文抽取、站点预设（可自定义增删）、实时页面渲染与鼠标键盘转发、本地 txt 小说阅读。"
 }

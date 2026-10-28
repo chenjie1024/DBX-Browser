@@ -6087,33 +6087,23 @@
   }
 
   /**
-   * 采集该用多大：**按"画面实际占据的设备像素"算，并保持页面宽高比**。
+   * 实时页面该用多大的"页面视口"：**就是面板占的 CSS 尺寸**。
    *
-   * 之前这里直接用面板 rect 的高宽（`rect.height` 当 maxHeight），踩了一个坑：
-   * 页面视口是 1280×900（比例 1.42），面板是 1264×681（比例 1.86），
-   * screencast 会保持视口比例缩放，于是高度先撞上限 → 只采到 968×681，
-   * 再在面板里放大 1.3 倍显示 → 文字发虚。
-   *
-   * 正确做法：先算出画面在面板里按 contain 实际占多少 CSS 像素，乘 DPR 得到
-   * 需要的设备像素，再按页面比例反推 maxHeight。这样采集分辨率 ≥ 显示分辨率，
-   * 不会被放大。
+   * 这和以前"算采集像素"的思路不同：现在把 WebView2 的视口直接设成面板大小、
+   * 设备像素比设成系统 DPR，页面按物理像素栅格化，采集 1:1 对齐屏幕 ——
+   * 既不会放大发虚，也不会留黑边（视口比例 == 面板比例）。
    */
-  function liveCaptureSize() {
+  function liveViewportRequest() {
     var surface = el.liveCanvas && !el.liveCanvas.hidden ? el.liveCanvas : el.liveFrame;
     if (!surface) return null;
     var rect = surface.getBoundingClientRect();
     if (!rect.width || !rect.height) return null;
     var dpr = window.devicePixelRatio || 1;
-    var viewW = liveState.width || 1280;
-    var viewH = liveState.height || 900;
-    var ratio = viewH / viewW;
-    // contain：画面在面板内实际显示尺寸
-    var shownW = Math.min(rect.width, rect.height / ratio);
-    // 采集宽度：显示宽度 × DPR，限制在 [640, 1280]
-    var width = Math.round(clamp(shownW * dpr, 640, 1280));
-    // 高度按页面比例反推（不要用面板高度，否则会把画面缩小再放大）
-    var height = Math.round(clamp(width * ratio, 360, 900));
-    return { width: width, height: height };
+    return {
+      width: Math.round(clamp(rect.width, 320, 1920)),
+      height: Math.round(clamp(rect.height, 240, 1200)),
+      dpr: Math.round(clamp(dpr, 1, 2) * 100) / 100
+    };
   }
 
   var liveResizeTimer = 0;
@@ -6121,7 +6111,7 @@
     if (liveResizeTimer) clearTimeout(liveResizeTimer);
     liveResizeTimer = setTimeout(function () {
       liveResizeTimer = 0;
-      var size = liveCaptureSize();
+      var size = liveViewportRequest();
       if (!size || !liveState.active || liveState.paused) return;
       invoke("webview/liveResize", size, 8000).catch(function () {
         return null;
@@ -6139,6 +6129,9 @@
    * 菜单不依赖 alert/confirm —— 插件 sandbox 里那两个是禁用的。
    */
   var hostMenuState = { preset: null, pattern: "", blocked: false, confirming: false };
+  /* 「修改域名」弹窗当前在改哪一条：不要把这些挂到元素映射表上——
+     动态挂属性会让静态检查报"引用了未声明的元素"，实际运行时也确实容易漏。 */
+  var hostDialogState = { pattern: "", presetId: "", custom: false };
 
   function openHostMenu(preset, pattern, blocked, event) {
     if (!el.hostMenu) return;
@@ -6231,9 +6224,9 @@
     }
     if (el.hostDialogInput) {
       el.hostDialogInput.value = pattern;
-      el.hostDialogPattern = pattern;
-      el.hostDialogPresetId = preset.id;
-      el.hostDialogCustom = !!preset.custom;
+      hostDialogState.pattern = pattern;
+      hostDialogState.presetId = preset.id;
+      hostDialogState.custom = !!preset.custom;
     }
     setText(el.hostDialogTitle, t("presetHostEditTitle"));
     if (el.hostDialog) el.hostDialog.hidden = false;
@@ -6243,8 +6236,8 @@
   /** 保存"修改域名"。自定义预设就地改名；内置预设则屏蔽旧域名 + 复制规则到新域名。 */
   function saveHostPattern() {
     var value = String((el.hostDialogInput && el.hostDialogInput.value) || "").trim();
-    var oldPattern = el.hostDialogPattern || "";
-    var presetId = el.hostDialogPresetId || "";
+    var oldPattern = hostDialogState.pattern || "";
+    var presetId = hostDialogState.presetId || "";
     if (!value || value === oldPattern) {
       if (el.hostDialog) el.hostDialog.hidden = true;
       return;
@@ -6254,7 +6247,7 @@
       return;
     }
     if (el.hostDialog) el.hostDialog.hidden = true;
-    if (el.hostDialogCustom) {
+    if (hostDialogState.custom) {
       var next = state.customPresets.map(function (rule) {
         if (rule.id !== presetId) return rule;
         var copy = assign({}, rule);
@@ -6293,6 +6286,46 @@
     );
   }
 
+  /* ── 滚动时降质 ─────────────────────────────────────────────────────── *
+   *
+   * 人眼在滚动时看不清细节，但停下来的瞬间很挑。所以：滚动期间把 JPEG 质量
+   * 降到 60（每帧字节数减半，帧率立刻回升），停手 350ms 后恢复 85。
+   */
+  var LIVE_QUALITY_IDLE = 85;
+  var LIVE_QUALITY_SCROLL = 60;
+  var liveQualityState = { current: 0, timer: 0 };
+
+  function requestLiveQuality(quality) {
+    if (!liveState.active || liveState.paused) return;
+    if (liveQualityState.current === quality) return;
+    liveQualityState.current = quality;
+    invoke("webview/liveQuality", { quality: quality }, 5000).catch(function () {
+      return null;
+    });
+  }
+
+  /** 滚动/滚轮期间调用；停手后自动恢复清晰度。 */
+  function noteLiveScroll() {
+    requestLiveQuality(LIVE_QUALITY_SCROLL);
+    if (liveQualityState.timer) clearTimeout(liveQualityState.timer);
+    liveQualityState.timer = setTimeout(function () {
+      liveQualityState.timer = 0;
+      requestLiveQuality(LIVE_QUALITY_IDLE);
+    }, 350);
+  }
+
+  /** 进入/退出实时时把质量复位（否则可能停在 60 上）。 */
+  function resetLiveQuality() {
+    if (liveQualityState.timer) clearTimeout(liveQualityState.timer);
+    liveQualityState.timer = 0;
+    liveQualityState.current = 0;
+    requestLiveQuality(LIVE_QUALITY_IDLE);
+  }
+
+  function resetLiveWorker() {
+    liveWorkerState.busy = false;
+  }
+
   function showLiveView(tab, options) {
     if (!tab || !tab.live || !tab.url) {
       hideLiveChrome();
@@ -6308,11 +6341,14 @@
       liveState.pendingFrame = null;
       liveState.frameBusy = false;
       liveState.framesDrawn = 0;
-      // 回到"还没出画面"的初始状态：两个绘制面都清掉，
-      // canvas 先藏起来，等第一帧真的画上去再显示（避免闪白/闪黑）。
+      resetLiveWorker();
+      resetLiveQuality();
+      // 回到"还没出画面"的初始状态：两个绘制面都清掉。
+      // 注意：canvas 可能已经把控制权交给了 worker，这时**不能**去动它的
+      // width/height（会抛 InvalidStateError），只切显示状态。
       if (el.liveCanvas) {
         el.liveCanvas.removeAttribute("data-ready");
-        el.liveCanvas.hidden = true;
+        el.liveCanvas.hidden = !liveWorkerState.worker;
       }
       if (el.liveFrame) {
         el.liveFrame.removeAttribute("data-ready");
@@ -6324,18 +6360,23 @@
     showLiveChrome(tab);
     liveStatus(tab);
     syncToolbar();
-    // 采集尺寸按面板实际大小给（解码成本与像素数成正比）。
-    var capture = liveCaptureSize();
+    // 视口 = 面板尺寸（CSS 像素），DPR 交给 sidecar 按系统缩放栅格化。
+    var viewport = liveViewportRequest();
     var openParams = { url: tab.url };
-    if (capture) {
-      openParams.captureWidth = capture.width;
-      openParams.captureHeight = capture.height;
+    if (viewport) {
+      openParams.viewportWidth = viewport.width;
+      openParams.viewportHeight = viewport.height;
+      openParams.deviceScaleFactor = viewport.dpr;
+      liveState.width = viewport.width;
+      liveState.height = viewport.height;
+      liveState.scale = viewport.dpr;
     }
     return invoke("webview/liveOpen", openParams, 45000).then(
       function (result) {
         if (result && result.viewport) {
           liveState.width = num(result.viewport.width, liveState.width);
           liveState.height = num(result.viewport.height, liveState.height);
+          liveState.scale = num(result.viewport.scale, liveState.scale || 1);
         }
         liveState.starting = false;
         if (liveState.paused) {
@@ -6415,35 +6456,64 @@
   /**
    * 把一帧画到界面上。
    *
-   * 两条路径：
-   *   1. **canvas + createImageBitmap（首选）**：JPEG 解码发生在工作线程，
-   *      主线程只做一次 drawImage。用 <img src=data:...> 时解码会压在主线程上，
-   *      文本页滚动时能明显看到掉帧（实测 6 秒只有 ~10 fps）。
-   *   2. **img 降级**：老运行时没有 createImageBitmap 时退回原来的做法。
+   * 现在的链路（按优先级）：
+   *   1. **Worker + OffscreenCanvas**：解码与绘制都在 worker 里，主线程只在
+   *      收帧时把 ArrayBuffer 转移过去，滚动时不会被解码拖住。
+   *   2. **主线程 createImageBitmap**：worker 不可用时（CSP 限制等）退回。
+   *   3. **img 降级**：更老的运行时。
+   *
+   * 帧数据来自二进制通道（`webview/liveFrame`），已经是原始 JPEG 字节，
+   * 不再有 base64 解码这一步。
    */
   function applyLiveFrame() {
     if (!liveState.pendingFrame || liveState.frameBusy) return;
-    var data = liveState.pendingFrame;
+    var frame = liveState.pendingFrame;
     liveState.pendingFrame = null;
-    liveState.frameBusy = true;
 
     var done = function () {
       liveState.frameBusy = false;
-      // 期间又来了新帧就继续画（只保留最新的一帧，中间的直接丢弃）。
       if (liveState.pendingFrame) applyLiveFrame();
     };
 
     markLiveReady();
 
+    var stats = window.__dbxLiveStats || (window.__dbxLiveStats = { received: 0, drawn: 0, bytes: 0 });
+    var started = typeof performance !== "undefined" && performance.now ? performance.now() : 0;
     var canvas = el.liveCanvas;
-    var canBitmap =
-      canvas &&
-      typeof window.createImageBitmap === "function" &&
-      typeof window.Blob === "function" &&
-      typeof window.atob === "function";
-    if (canBitmap) {
-      decodeJpegToBitmap(data).then(
+
+    // 1) Worker 路径。**只有一个待画槽位**：`liveState.pendingFrame`。
+    //    之前 worker 那边又留了一个 pending，worker 画完只去取自己那个槽，
+    //    主线程排队的最新帧就没人处理 —— 表现是"只画第一帧然后卡住"。
+    if (startLiveWorker(canvas)) {
+      if (!liveWorkerState.ready) {
+        // worker 还没 init 完：把帧放回去，等 ready 回调再取。
+        liveState.pendingFrame = frame;
+        return;
+      }
+      liveState.frameBusy = true;
+      liveWorkerState.busy = true;
+      try {
+        liveWorkerState.worker.postMessage({ type: "frame", buffer: frame.bytes.buffer }, [
+          frame.bytes.buffer
+        ]);
+      } catch (error) {
+        liveState.frameBusy = false;
+        liveWorkerState.busy = false;
+      }
+      return;
+    }
+
+    liveState.frameBusy = true;
+
+    // 2) 主线程 createImageBitmap
+    if (canvas && typeof window.createImageBitmap === "function" && typeof window.Blob === "function") {
+      var blob = new Blob([frame.bytes], { type: "image/jpeg" });
+      window.createImageBitmap(blob).then(
         function (bitmap) {
+          if (started) {
+            stats.decodeMs = (stats.decodeMs || 0) + (performance.now() - started);
+            stats.decodeCount = (stats.decodeCount || 0) + 1;
+          }
           if (!liveState.active || liveState.paused) {
             if (bitmap && bitmap.close) bitmap.close();
             done();
@@ -6452,52 +6522,170 @@
           drawLiveBitmap(canvas, bitmap, done);
         },
         function () {
-          // 解码失败（半帧 / 内存紧张）：这一帧丢掉，让出 busy 标记。
           done();
         }
       );
       return;
     }
 
-    // 降级：老路重设 <img src>，等 onload 再收下一帧。
+    // 3) img 降级
     if (!el.liveFrame) {
       liveState.frameBusy = false;
       return;
     }
     el.liveFrame.hidden = false;
     if (canvas) canvas.hidden = true;
-    el.liveFrame.onload = done;
-    el.liveFrame.onerror = done;
-    el.liveFrame.src = "data:image/jpeg;base64," + data;
+    var url = URL.createObjectURL(new Blob([frame.bytes], { type: "image/jpeg" }));
+    var revoke = function () {
+      URL.revokeObjectURL(url);
+      done();
+    };
+    el.liveFrame.onload = revoke;
+    el.liveFrame.onerror = revoke;
+    el.liveFrame.src = url;
   }
 
-  /** base64(JPEG) -> ImageBitmap，解码在工作线程完成。 */
-  function decodeJpegToBitmap(base64) {
-    var started = typeof performance !== "undefined" && performance.now ? performance.now() : 0;
-    return new Promise(function (resolve, reject) {
-      var binary;
-      try {
-        binary = window.atob(base64);
-      } catch (error) {
-        reject(error);
-        return;
-      }
-      var bytes = new Uint8Array(binary.length);
-      for (var i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-      var blob = new Blob([bytes], { type: "image/jpeg" });
-      window.createImageBitmap(blob).then(
-        function (bitmap) {
-          // 记录"base64 转码 + 解码"的总耗时，用来判断瓶颈在传输还是解码。
-          if (started) {
-            var stats = window.__dbxLiveStats || (window.__dbxLiveStats = { received: 0, drawn: 0, bytes: 0 });
-            stats.decodeMs = (stats.decodeMs || 0) + (performance.now() - started);
-            stats.decodeCount = (stats.decodeCount || 0) + 1;
+  /* ── Worker 解码 ─────────────────────────────────────────────────────── */
+
+  var liveWorkerState = { worker: null, ready: false, failed: false, busy: false, canvas: null };
+
+  var LIVE_WORKER_CODE = [
+    "var canvas = null;",
+    "var ctx = null;",
+    "self.onmessage = function (e) {",
+    "  var m = e.data || {};",
+    "  if (m.type === 'init') {",
+    "    canvas = m.canvas; ctx = canvas.getContext('2d');",
+    "    canvas.width = m.width; canvas.height = m.height;",
+    "    self.postMessage({ type: 'ready' });",
+    "    return;",
+    "  }",
+    "  if (m.type === 'frame') {",
+    "    var bitmapPromise = self.createImageBitmap(new Blob([m.buffer], { type: 'image/jpeg' }));",
+    "    bitmapPromise.then(function (bitmap) {",
+    "      try {",
+    "        if (canvas.width !== bitmap.width || canvas.height !== bitmap.height) {",
+    "          canvas.width = bitmap.width; canvas.height = bitmap.height;",
+    "        }",
+    "        ctx.imageSmoothingEnabled = true;",
+    "        if ('imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality = 'high';",
+    "        ctx.drawImage(bitmap, 0, 0);",
+    "      } catch (err) {}",
+    "      if (bitmap.close) bitmap.close();",
+    "      self.postMessage({ type: 'drawn' });",
+    "    }, function () {",
+    "      self.postMessage({ type: 'failed' });",
+    "    });",
+    "  }",
+    "};"
+  ].join("\n");
+
+  /** 懒启动 worker；失败（CSP 不允许 blob worker 等）就永久降级。 */
+  function startLiveWorker(canvas) {
+    if (!canvas || liveWorkerState.failed) return false;
+    if (liveWorkerState.worker) return true;
+    if (
+      typeof window.Worker !== "function" ||
+      typeof window.Blob !== "function" ||
+      typeof window.URL === "undefined" ||
+      !canvas.transferControlToOffscreen
+    ) {
+      liveWorkerState.failed = true;
+      return false;
+    }
+    try {
+      var url = URL.createObjectURL(new Blob([LIVE_WORKER_CODE], { type: "text/javascript" }));
+      var worker = new window.Worker(url);
+      var offscreen = canvas.transferControlToOffscreen();
+      liveWorkerState.worker = worker;
+      liveWorkerState.canvas = canvas;
+      worker.onmessage = function (event) {
+        var message = event && event.data ? event.data : {};
+        var stats = window.__dbxLiveStats;
+        if (message.type === "ready") {
+          liveWorkerState.ready = true;
+          // init 期间排着的那一帧现在可以画了。
+          if (liveState.pendingFrame) applyLiveFrame();
+          return;
+        }
+        if (message.type === "drawn" || message.type === "failed") {
+          liveWorkerState.busy = false;
+          liveState.frameBusy = false;
+          if (stats) {
+            stats.worker = stats.worker || { ready: 0, drawn: 0, failed: 0 };
+            if (message.type === "drawn") {
+              stats.drawn += 1;
+              stats.worker.drawn += 1;
+            } else {
+              stats.worker.failed += 1;
+            }
           }
-          resolve(bitmap);
+          // 关键：画完之后要回到**主线程的待画槽**继续取帧，
+          // 否则排队的最新帧永远没人处理，画面停在第一帧。
+          if (liveState.pendingFrame) applyLiveFrame();
+        }
+      };
+      worker.onerror = function (event) {
+        liveWorkerState.failed = true;
+        var stats = window.__dbxLiveStats;
+        if (stats) {
+          stats.worker = stats.worker || { ready: 0, drawn: 0, failed: 0 };
+          stats.worker.lastError = (event && event.message ? event.message : "worker error").slice(0, 200);
+        }
+        liveState.frameBusy = false;
+        if (liveState.pendingFrame) applyLiveFrame();
+      };
+      // 画布一旦转交给 worker，主线程就不能再画了：直接从 <img> 切过去。
+      canvas.hidden = false;
+      if (el.liveFrame) el.liveFrame.hidden = true;
+      worker.postMessage(
+        {
+          type: "init",
+          canvas: offscreen,
+          width: canvas.width || 640,
+          height: canvas.height || 360
         },
-        reject
+        [offscreen]
       );
-    });
+      return true;
+    } catch (error) {
+      liveWorkerState.failed = true;
+      liveWorkerState.worker = null;
+      return false;
+    }
+  }
+
+  /** 在下一帧绘制，避免同一 tick 里画两次互相覆盖。 */
+  function drawLiveBitmap(canvas, bitmap, done) {
+    var paint = function () {
+      try {
+        // 第一次成功绘制时从 <img> 切到 <canvas>。
+        if (canvas.hidden) {
+          canvas.hidden = false;
+          if (el.liveFrame) el.liveFrame.hidden = true;
+        }
+        if (canvas.width !== bitmap.width || canvas.height !== bitmap.height) {
+          canvas.width = bitmap.width;
+          canvas.height = bitmap.height;
+        }
+        var ctx = canvas.getContext("2d");
+        if (ctx) {
+          // 缩放绘制时用高质量插值，避免文字发虚。
+          ctx.imageSmoothingEnabled = true;
+          if ("imageSmoothingQuality" in ctx) ctx.imageSmoothingQuality = "high";
+          ctx.drawImage(bitmap, 0, 0);
+        }
+        liveState.framesDrawn = (liveState.framesDrawn || 0) + 1;
+        var stats = window.__dbxLiveStats;
+        if (stats) stats.drawn += 1;
+      } catch (error) {
+        /* 画失败也继续，下一帧会重试 */
+      }
+      if (bitmap.close) bitmap.close();
+      done();
+    };
+    if (typeof window.requestAnimationFrame === "function") window.requestAnimationFrame(paint);
+    else paint();
   }
 
   /** 在下一帧绘制，避免同一 tick 里画两次互相覆盖。 */
@@ -6556,26 +6744,73 @@
     return el.liveFrame || null;
   }
 
-  function onLiveFrame(payload) {
+  /* 二进制帧头：magic "LF1"(3) + seq(4) + width(2) + height(2)，后面是 JPEG。 */
+  var LIVE_FRAME_HEADER = 11;
+
+  /**
+   * 收帧入口。两条来源都要走这里：
+   *   · 二进制通道（`onBinary`，`stdio-framed`）：`data` 是 Uint8Array/ArrayBuffer；
+   *   · 旧宿主的事件通道（base64 JSON）：为了兼容，仍然能解。
+   */
+  function ingestLiveFrame(bytes, seq, width, height) {
     if (!liveState.active || liveState.paused) return;
-    if (!payload || typeof payload.data !== "string" || !payload.data) return;
-    var seq = num(payload.seq, 0);
+    if (!bytes || !bytes.length) return;
     if (seq && seq <= liveState.lastSeq) return;
     liveState.lastSeq = seq || liveState.lastSeq + 1;
-    if (payload.width) liveState.width = num(payload.width, liveState.width);
-    if (payload.height) liveState.height = num(payload.height, liveState.height);
-    liveState.pendingFrame = payload.data;
-    // 诊断计数器：排查"实时画面卡顿"时可以直接读它，
-    // 不用再去猜是没收到帧、还是收到了画不出来。
+    // 帧里的 width/height 是**采集像素**（设备像素），不能拿来当点击坐标的视口：
+    // 视口是 CSS 像素，以 `liveState` 事件里的 viewport 为准。
+    if (width) liveState.captureWidth = width;
+    if (height) liveState.captureHeight = height;
+    liveState.pendingFrame = { bytes: bytes };
     var stats = window.__dbxLiveStats || (window.__dbxLiveStats = { received: 0, drawn: 0, bytes: 0 });
     stats.received += 1;
-    stats.bytes += payload.data.length;
+    stats.bytes += bytes.length;
     applyLiveFrame();
+  }
+
+  /** 二进制事件：`{ channel, data }`，data 是原始字节。 */
+  function onLiveBinary(payload) {
+    if (!payload || payload.channel !== "webview/liveFrame") return;
+    var raw = payload.data;
+    var view;
+    if (raw instanceof Uint8Array) view = raw;
+    else if (raw instanceof ArrayBuffer) view = new Uint8Array(raw);
+    else if (raw && raw.buffer instanceof ArrayBuffer) view = new Uint8Array(raw.buffer, raw.byteOffset || 0, raw.byteLength || 0);
+    else return;
+    if (view.length <= LIVE_FRAME_HEADER) return;
+    if (view[0] !== 0x4c || view[1] !== 0x46 || view[2] !== 0x31) return; // "LF1"
+    var header = new DataView(view.buffer, view.byteOffset, LIVE_FRAME_HEADER);
+    var seq = header.getUint32(3);
+    var width = header.getUint16(7);
+    var height = header.getUint16(9);
+    // slice 出独立 ArrayBuffer：稍后要 transfer 给 worker，不能带着头部的偏移。
+    var jpeg = view.slice(LIVE_FRAME_HEADER);
+    ingestLiveFrame(jpeg, seq, width, height);
+  }
+
+  /** 旧宿主的事件通道（base64）。保留兼容：新宿主不会再走这里。 */
+  function onLiveFrame(payload) {
+    if (!payload || typeof payload.data !== "string" || !payload.data) return;
+    var binary;
+    try {
+      binary = window.atob(payload.data);
+    } catch (error) {
+      return;
+    }
+    var bytes = new Uint8Array(binary.length);
+    for (var i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    ingestLiveFrame(bytes, num(payload.seq, 0), num(payload.width, 0), num(payload.height, 0));
   }
 
   function onLiveState(payload) {
     if (!payload) return;
     liveState.state = payload;
+    // 视口是 CSS 像素，点击坐标要按它换算（采集像素是它的 DPR 倍）。
+    if (payload.viewport) {
+      liveState.width = num(payload.viewport.width, liveState.width);
+      liveState.height = num(payload.viewport.height, liveState.height);
+      liveState.scale = num(payload.viewport.scale, liveState.scale || 1);
+    }
     var tab = byId(state.tabs, liveState.tabId) || activeTab();
     if (!tab) return;
     if (isHttpUrl(payload.url)) {
@@ -6718,6 +6953,8 @@
         var point = livePoint(event);
         if (!point) return;
         event.preventDefault();
+        // 滚动期间降质换帧率，停手 350ms 自动恢复。
+        noteLiveScroll();
         postLiveInput({
           kind: "mouse",
           type: "wheel",
@@ -6823,6 +7060,18 @@
   }
 
   function wireLiveEvents() {
+    // 二进制通道：新宿主走这里（manifest 声明了 host.binary + stdio-framed）。
+    if (plugin && typeof plugin.onBinary === "function") {
+      try {
+        plugin.onBinary(function (payload) {
+          onLiveBinary(payload);
+        });
+      } catch (error) {
+        if (typeof console !== "undefined" && console.warn) {
+          console.warn("[dbx-webview] binary subscription failed", error);
+        }
+      }
+    }
     if (!plugin || typeof plugin.onEvent !== "function") return;
     try {
       plugin.onEvent(function (event) {

@@ -75,15 +75,19 @@ pub enum Command {
         expression: String,
         reply: Sender<StdResult<Value, String>>,
     },
-    /// 按 UI 的实际显示尺寸调整采集大小。
+    /// 把页面视口设成 UI 面板的尺寸。
     ///
-    /// 解码成本与像素数成正比（实测 1280×900 每帧 32ms，960×675 只要 12.6ms），
-    /// 而采集到头来都要缩进面板里显示。所以按显示尺寸采集：既不掉清晰度，
-    /// 又把解码成本压到最低。
-    Resize {
+    /// 之前视口固定 1280×900、DPR 固定 1，而面板在 125% 缩放的屏幕上需要 1584 个
+    /// 物理像素 —— 采集分辨率不够，只能放大显示，文字就发虚。
+    /// 现在视口 = 面板 CSS 尺寸，`deviceScaleFactor` = 系统 DPR，
+    /// 采集按物理像素走，画面和浏览器里一样锐。
+    Viewport {
         width: i32,
         height: i32,
+        scale: f64,
     },
+    /// 调整 JPEG 质量：滚动时降质保帧率，停下再恢复清晰。
+    Quality(i32),
     Pause,
     Resume,
     Close,
@@ -159,20 +163,37 @@ impl Drop for LiveSession {
     }
 }
 
+/// 帧头长度：magic(3) + seq(4) + width(2) + height(2)，后面直接跟 JPEG 字节。
+const FRAME_HEADER: usize = 11;
+const FRAME_MAGIC: [u8; 3] = *b"LF1";
+
+/// 一帧：头部 + 原始 JPEG（不再走 base64 + JSON）。
+fn encode_frame(seq: u32, width: u16, height: u16, jpeg: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(FRAME_HEADER + jpeg.len());
+    out.extend_from_slice(&FRAME_MAGIC);
+    out.extend_from_slice(&seq.to_be_bytes());
+    out.extend_from_slice(&width.to_be_bytes());
+    out.extend_from_slice(&height.to_be_bytes());
+    out.extend_from_slice(jpeg);
+    out
+}
+
 struct FrameSink {
-    tx: SyncSender<Value>,
+    tx: SyncSender<Vec<u8>>,
 }
 
 impl FrameSink {
     fn new(emitter: Arc<Mutex<Option<PluginEmitter>>>) -> Self {
-        let (tx, rx) = mpsc::sync_channel::<Value>(16);
+        // 二进制帧：省掉 base64（+33% 体积）与 JSON 编解码，这是实时画面帧率的
+        // 主要瓶颈之一。需要 manifest 里的 `host.binary` 与 `stdio-framed` 传输。
+        let (tx, rx) = mpsc::sync_channel::<Vec<u8>>(16);
         let _ = thread::Builder::new()
             .name("dbx-webview2-events".into())
             .spawn(move || {
                 while let Ok(frame) = rx.recv() {
                     let emitter = emitter.lock().ok().and_then(|guard| guard.clone());
                     if let Some(emitter) = emitter {
-                        let _ = emitter.event("webview/liveFrame", frame);
+                        let _ = emitter.binary("webview/liveFrame", &frame);
                     }
                 }
             });
@@ -186,8 +207,12 @@ struct Context {
     controller: ICoreWebView2Controller,
     emitter: Arc<Mutex<Option<PluginEmitter>>>,
     screencast: bool,
-    /// 当前采集尺寸（像素）。由 UI 按显示尺寸设置，默认用视口大小。
-    capture: (i32, i32),
+    /// 页面视口（CSS 像素）。由 UI 按面板尺寸设置。
+    viewport: (i32, i32),
+    /// 设备像素比。与 viewport 一起决定采集分辨率（物理像素 = css × scale）。
+    scale: f64,
+    /// 当前 JPEG 质量（滚动时会临时调低）。
+    quality: i32,
     /// 输入转发失败只报一次（鼠标移动很频繁，否则会刷屏）。
     input_error_once: std::sync::atomic::AtomicBool,
 }
@@ -271,7 +296,9 @@ fn run(profile: PathBuf, rx: Receiver<Command>, ready: Sender<StdResult<isize, S
             controller,
             emitter,
             screencast: false,
-            capture: (VIEW_WIDTH, VIEW_HEIGHT),
+            viewport: (VIEW_WIDTH, VIEW_HEIGHT),
+            scale: 1.0,
+            quality: SCREENCAST_QUALITY,
             input_error_once: std::sync::atomic::AtomicBool::new(false),
         });
     });
@@ -440,12 +467,16 @@ fn wire_events(webview: &ICoreWebView2, sink: &FrameSink) -> windows::core::Resu
                 .unwrap_or(VIEW_HEIGHT as u64);
             let seq = sequence_for_handler.get() + 1;
             sequence_for_handler.set(seq);
-            frame_sink.frame(json!({
-                "data": data,
-                "seq": seq,
-                "width": width,
-                "height": height,
-            }));
+            // CDP 给的是 base64，这里解成原始字节后按二进制帧发出去。
+            match decode_base64(data) {
+                Some(jpeg) => frame_sink.frame(encode_frame(
+                    seq as u32,
+                    width as u16,
+                    height as u16,
+                    &jpeg,
+                )),
+                None => {}
+            }
             Ok(())
         },
     ));
@@ -531,11 +562,11 @@ impl FrameSink {
 }
 
 struct FrameHandle {
-    tx: SyncSender<Value>,
+    tx: SyncSender<Vec<u8>>,
 }
 
 impl FrameHandle {
-    fn frame(&self, payload: Value) {
+    fn frame(&self, payload: Vec<u8>) {
         let _ = self.tx.try_send(payload);
     }
 }
@@ -608,22 +639,20 @@ fn drain_commands(context: &mut Context) {
                 }
                 navigate(context, &url);
                 if !context.screencast {
-                    start_screencast(&context.webview, context.capture);
+                    start_screencast(&context.webview, capture_size(context), context.quality);
                     context.screencast = true;
                 }
                 emit_state(context);
             }
-            Command::Resize { width, height } => {
-                let next = clamp_capture(width, height);
-                if next != context.capture {
-                    context.capture = next;
-                    // screencast 的尺寸只能在开始时指定：停掉重开。
-                    if context.screencast {
-                        stop_screencast(&context.webview);
-                        start_screencast(&context.webview, next);
-                        context.screencast = true;
-                    }
-                }
+            Command::Viewport {
+                width,
+                height,
+                scale,
+            } => {
+                apply_viewport(context, width, height, scale);
+            }
+            Command::Quality(quality) => {
+                apply_quality(context, quality);
             }
             Command::Navigate(url) => {
                 navigate(context, &url);
@@ -689,7 +718,7 @@ fn drain_commands(context: &mut Context) {
             }
             Command::Resume => {
                 if !context.screencast {
-                    start_screencast(&context.webview, context.capture);
+                    start_screencast(&context.webview, capture_size(context), context.quality);
                     context.screencast = true;
                     emit_state(context);
                 }
@@ -729,27 +758,77 @@ fn navigate(context: &Context, url: &str) {
     }
 }
 
-/// 采集尺寸的合法范围。
+/// 采集分辨率（物理像素）= 视口 CSS 尺寸 × DPR。
 ///
-/// 下限保证画面还能看清文字，上限等于视口（再大没有意义，页面就那么大）。
-/// 注意 screencast 会**保持视口宽高比**缩放到这个框里，所以高度通常才是瓶颈。
-fn clamp_capture(width: i32, height: i32) -> (i32, i32) {
-    let width = width.clamp(480, VIEW_WIDTH);
-    let height = height.clamp(360, VIEW_HEIGHT);
-    (width, height)
+/// 上限 2560×1600：再大解码成本会压垮帧率，而面板通常也用不到这么多像素。
+fn capture_size(context: &Context) -> (i32, i32) {
+    let (width, height) = context.viewport;
+    let scale = context.scale;
+    let w = ((width as f64) * scale).round().clamp(480.0, 2560.0) as i32;
+    let h = ((height as f64) * scale).round().clamp(360.0, 1600.0) as i32;
+    (w, h)
 }
 
-fn start_screencast(webview: &ICoreWebView2, capture: (i32, i32)) {
+/// 应用新的视口：改 CDP 的设备指标（CSS 尺寸 + DPR），再按物理像素重开采集。
+///
+/// 用 `Emulation.setDeviceMetricsOverride` 而不是改窗口大小，是因为它同时决定
+/// 两件事：页面按多大 CSS 宽高排版、以及按几倍像素栅格化。窗口尺寸不影响采集。
+fn apply_viewport(context: &mut Context, width: i32, height: i32, scale: f64) {
+    let width = width.clamp(320, 3840);
+    let height = height.clamp(240, 2160);
+    let scale = if scale.is_finite() { scale.clamp(1.0, 2.0) } else { 1.0 };
+    let same = context.viewport == (width, height) && (context.scale - scale).abs() < 0.01;
+    context.viewport = (width, height);
+    context.scale = scale;
+    let _ = cdp(
+        &context.webview,
+        "Emulation.setDeviceMetricsOverride",
+        json!({
+            "width": width,
+            "height": height,
+            "deviceScaleFactor": scale,
+            "mobile": false
+        }),
+    );
+    if same {
+        return;
+    }
+    // 采集尺寸只在 startScreencast 时生效：停掉重开。
+    if context.screencast {
+        stop_screencast(&context.webview);
+        start_screencast(&context.webview, capture_size(context), context.quality);
+        context.screencast = true;
+    }
+    emit_state(context);
+}
+
+/// 调整 JPEG 质量（滚动降质 / 停手恢复）。
+///
+/// 质量只能在 `startScreencast` 时指定，所以改了就得停掉重开——这里也顺带
+/// 判断"没变就不动"，避免滚动时反复重启采集。
+fn apply_quality(context: &mut Context, quality: i32) {
+    let quality = quality.clamp(30, 95);
+    if quality == context.quality {
+        return;
+    }
+    context.quality = quality;
+    if context.screencast {
+        stop_screencast(&context.webview);
+        start_screencast(&context.webview, capture_size(context), quality);
+        context.screencast = true;
+    }
+}
+
+fn start_screencast(webview: &ICoreWebView2, capture: (i32, i32), quality: i32) {
     let (max_width, max_height) = capture;
     let _ = cdp(
         webview,
         "Page.startScreencast",
         json!({
             "format": "jpeg",
-            // 解码成本与**像素数**成正比（实测：1280×900 每帧 31.9ms，960×675 只要 12.6ms），
-            // 而画面最终都要缩进面板显示。所以采集尺寸由 UI 按面板实际大小给出：
-            // 既不牺牲清晰度，又不会解码一堆屏幕上根本显示不出来的像素。
-            "quality": SCREENCAST_QUALITY,
+            // quality 80：文本页每帧约 30–40KB。压到 55 时文字边缘会发虚——
+            // 实时页面主要用来看文字，这个取舍不划算。
+            "quality": quality,
             "maxWidth": max_width,
             "maxHeight": max_height,
             "everyNthFrame": SCREENCAST_EVERY_NTH_FRAME
@@ -781,6 +860,16 @@ fn emit_state(context: &Context) {
         "canGoBack": can_back.as_bool(),
         "canGoForward": can_forward.as_bool(),
         "screencast": context.screencast,
+        // 视口是 CSS 像素：UI 的点击坐标要按它换算。
+        "viewport": {
+            "width": context.viewport.0,
+            "height": context.viewport.1,
+            "scale": context.scale,
+        },
+        "capture": {
+            "width": capture_size(context).0,
+            "height": capture_size(context).1,
+        },
     });
     let emitter = context.emitter.lock().ok().and_then(|guard| guard.clone());
     if let Some(emitter) = emitter {
@@ -882,6 +971,39 @@ fn apply_input(context: &Context, payload: &Value) {
         }
         _ => {}
     }
+}
+
+/// 标准 base64 解码（CDP 的 screencast 用标准字母表与 `=` 填充）。
+///
+/// 没引 base64 crate：这里只需要一个方向、且输入来自本机 CDP，不值得为此加依赖。
+fn decode_base64(input: &str) -> Option<Vec<u8>> {
+    fn value(byte: u8) -> Option<u8> {
+        match byte {
+            b'A'..=b'Z' => Some(byte - b'A'),
+            b'a'..=b'z' => Some(byte - b'a' + 26),
+            b'0'..=b'9' => Some(byte - b'0' + 52),
+            b'+' => Some(62),
+            b'/' => Some(63),
+            _ => None,
+        }
+    }
+    let bytes = input.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len() / 4 * 3 + 3);
+    let mut acc: u32 = 0;
+    let mut bits = 0u32;
+    for &byte in bytes {
+        if byte == b'=' || byte == b'\n' || byte == b'\r' {
+            continue;
+        }
+        let v = value(byte)?;
+        acc = (acc << 6) | v as u32;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((acc >> bits) as u8);
+        }
+    }
+    Some(out)
 }
 
 fn cdp(webview: &ICoreWebView2, method: &str, params: Value) -> windows::core::Result<()> {
